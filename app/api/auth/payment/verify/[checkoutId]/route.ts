@@ -1,17 +1,20 @@
 // app/api/payment/verify/[checkoutId]/route.ts
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const BACKEND_URL =
   "https://178e-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment/";
 
 export async function GET(
   request: Request,
-  { params }: { params: { checkoutId: string } }
+  { params }: { params: Promise<{ checkoutId: string }> }
 ) {
   try {
     console.log("=== Payment Verify API Route ===");
 
-    const { checkoutId } = params;
+    const { checkoutId } = await params;
 
     if (!checkoutId) {
       return NextResponse.json(

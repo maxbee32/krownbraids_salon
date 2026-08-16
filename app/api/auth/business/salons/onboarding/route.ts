@@ -1,22 +1,31 @@
 // app/api/auth/business/salons/onboarding/route.ts
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 // =====================================================
 // CONFIGURATION
 // =====================================================
 
-// Try different base URLs if one doesn't work
 const BACKEND_BASE = "https://178e-82-36-98-104.ngrok-free.app";
-
-// Option 1: Without /auth/ in path (recommended)
 const BACKEND_URL = `${BACKEND_BASE}/bservice/api/auth/v1/business/salons`;
 
-// Option 2: With /auth/ in path (current)
-// const BACKEND_URL = `${BACKEND_BASE}/bservice/api/auth/v1/business/salons`;
+// =====================================================
+// TYPES
+// =====================================================
+
+interface OnboardingRequestBody {
+  salonId: any;
+  currentStep?: number;
+  step?: string;
+  completed?: boolean;
+  selectedPlanId?: any;
+  businessData?: any; // Add this optional property
+}
 
 // =====================================================
 // GET SALON ONBOARDING
-// GET /api/auth/business/salons/onboarding
 // =====================================================
 
 export async function GET(request: Request) {
@@ -91,14 +100,13 @@ export async function GET(request: Request) {
 
 // =====================================================
 // SAVE SALON ONBOARDING - PUT
-// PUT /api/auth/business/salons/onboarding
 // =====================================================
 
 export async function PUT(request: Request) {
   try {
     console.log("=== Save Salon Onboarding API Route (PUT) ===");
 
-    const body = await request.json();
+    const body = await request.json() as OnboardingRequestBody;
 
     const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
 
@@ -112,13 +120,17 @@ export async function PUT(request: Request) {
     // Map frontend data to backend expected format
     const stepMap = ['BUSINESS', 'PLAN', 'PAYMENT', 'REVIEW'];
     
-    const mappedBody = {
+    const mappedBody: OnboardingRequestBody = {
       salonId: body.salonId,
-      step: stepMap[body.currentStep] || 'BUSINESS',
+      step: stepMap[body.currentStep || 0] || 'BUSINESS',
       completed: body.currentStep === 3,
       selectedPlanId: body.selectedPlanId || null,
-      businessData: body.businessData,
     };
+
+    // Only add businessData if it exists
+    if (body.businessData) {
+      mappedBody.businessData = body.businessData;
+    }
 
     const backendUrl = `${BACKEND_URL}/onboarding`;
 
@@ -181,14 +193,13 @@ export async function PUT(request: Request) {
 
 // =====================================================
 // SAVE SALON ONBOARDING - POST (Fallback)
-// POST /api/auth/business/salons/onboarding
 // =====================================================
 
 export async function POST(request: Request) {
   try {
     console.log("=== Save Salon Onboarding API Route (POST Fallback) ===");
 
-    const body = await request.json();
+    const body = await request.json() as OnboardingRequestBody;
 
     const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
 
@@ -298,14 +309,13 @@ export async function POST(request: Request) {
 
 // =====================================================
 // SAVE SALON ONBOARDING - PATCH (Additional Support)
-// PATCH /api/auth/business/salons/onboarding
 // =====================================================
 
 export async function PATCH(request: Request) {
   try {
     console.log("=== Save Salon Onboarding API Route (PATCH) ===");
 
-    const body = await request.json();
+    const body = await request.json() as OnboardingRequestBody;
 
     const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
 
@@ -319,9 +329,9 @@ export async function PATCH(request: Request) {
     // Map frontend data to backend expected format
     const stepMap = ['BUSINESS', 'PLAN', 'PAYMENT', 'REVIEW'];
     
-    const mappedBody = {
+    const mappedBody: OnboardingRequestBody = {
       salonId: body.salonId,
-      step: stepMap[body.currentStep] || 'BUSINESS',
+      step: stepMap[body.currentStep || 0] || 'BUSINESS',
       completed: body.currentStep === 3,
       selectedPlanId: body.selectedPlanId || null,
     };
