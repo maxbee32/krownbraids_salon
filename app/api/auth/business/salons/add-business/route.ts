@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://178e-82-36-98-104.ngrok-free.app/bservice/api/auth/v1/business/salons";
+  "https://7421-82-36-98-104.ngrok-free.app/bservice/api/v1/auth/business/salons";
 
 export async function POST(request: Request) {
   try {

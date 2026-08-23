@@ -1,11 +1,10 @@
-// app/api/payment/verify/[checkoutId]/route.ts
+// app/api/auth/payment/verify/[checkoutId]/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BACKEND_URL =
-  "https://178e-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment/";
+const BACKEND_URL = "https://7421-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment/";
 
 export async function GET(
   request: Request,
@@ -26,7 +25,6 @@ export async function GET(
       );
     }
 
-    // Get authorization token
     const authorization = request.headers.get("authorization");
     
     if (!authorization) {
@@ -41,7 +39,6 @@ export async function GET(
 
     console.log("Verifying payment for checkout:", checkoutId);
 
-    // Call Payment Service
     const response = await fetch(`${BACKEND_URL}/verify/${checkoutId}`, {
       method: "GET",
       headers: {
@@ -69,9 +66,17 @@ export async function GET(
       );
     }
 
+    // 🔥 Check if payment was successful
+    const isPaid = data.status === 'SUCCESS' || 
+                   data.status === 'PAID' || 
+                   data.status === 'success' || 
+                   data.status === 'PAYMENT_RECEIVED' ||
+                   data.status === 'COMPLETED';
+
     return NextResponse.json({
       success: true,
       status: data.status,
+      paid: isPaid,  // 🔥 Add this field for easy checking
       message: data.message || "Payment verified successfully",
     });
 

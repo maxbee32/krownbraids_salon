@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 
 const BACKEND_URL =
-  "https://178e-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment";
+  "https://7421-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment";
 export async function POST(request: Request) {
   try {
     console.log("=== Payment Initialize API Route ===");

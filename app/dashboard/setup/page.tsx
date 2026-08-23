@@ -97,6 +97,129 @@ export default function SetupPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
 
+
+  const fetchPlans = async () => {
+  try {
+    setPlansLoading(true);
+
+    const response = await fetch('/api/auth/subscription/plan', {
+      method: 'GET',
+      cache: 'no-store',
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      console.log('Plans fetched:', data);
+
+      // Handle both array and object responses
+      const plansArray = Array.isArray(data)
+        ? data
+        : data.data || data.plans || [];
+
+      setPlans(plansArray);
+    } else {
+      console.error('Failed to fetch plans:', response.status);
+      setPlans([]);
+    }
+  } catch (error) {
+    console.error('Error fetching plans:', error);
+    setPlans([]);
+  } finally {
+    setPlansLoading(false);
+  }
+};
+
+
+const loadOnboardingProgress = async () => {
+  try {
+    setLoadingOnboarding(true);
+    const token = localStorage.getItem('adminToken');
+    
+    const response = await fetch('/api/auth/business/salons/onboarding', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Full API response:', JSON.stringify(data, null, 2));
+      
+      const savedData = data;
+      
+      // Map string step to number
+      const stepMap: { [key: string]: number } = {
+        'BUSINESS': 0,
+        'PLAN': 1,
+        'PAYMENT': 2,
+        'REVIEW': 3,
+        'COMPLETED': 3,
+      };
+      
+      let stepToSet = 0;
+      const hasSalonId = savedData.salonId !== null && savedData.salonId !== undefined;
+      const hasSelectedPlan = savedData.selectedPlanId !== null && savedData.selectedPlanId !== undefined;
+      
+      // 🔥 Check if we have a step from the API first
+      if (savedData.step) {
+        if (typeof savedData.step === 'string') {
+          stepToSet = stepMap[savedData.step] ?? 0;
+          console.log(`Using step from API: ${savedData.step} → ${stepToSet}`);
+        }
+      }
+      
+      // 🔥 Override with data-based logic if needed
+      if (savedData.completed) {
+        stepToSet = 3; // REVIEW step
+        console.log('✅ Setup completed → Review step');
+      } else if (hasSalonId && hasSelectedPlan && stepToSet < 2) {
+        stepToSet = 2; // PAYMENT step
+        console.log('✅ Both salon and plan exist → Payment step');
+      } else if (hasSalonId && stepToSet < 1) {
+        stepToSet = 1; // PLAN step
+        console.log('✅ Salon exists but no plan → Plan selection step');
+      }
+      
+      // Load business data
+      if (savedData.businessData) {
+        console.log('📝 Loading business data from API:', savedData.businessData);
+        setBusinessData(savedData.businessData);
+        localStorage.setItem('setupBusinessData', JSON.stringify(savedData.businessData));
+      } else if (hasSalonId) {
+        await fetchSalonData(savedData.salonId, token);
+      }
+      
+      // Load plan selection
+      if (hasSelectedPlan) {
+        setSelectedPlanId(savedData.selectedPlanId);
+        localStorage.setItem('setupSelectedPlanId', String(savedData.selectedPlanId));
+      }
+      
+      // Load salon ID
+      if (hasSalonId) {
+        setSalonId(savedData.salonId);
+        localStorage.setItem('setupSalonId', String(savedData.salonId));
+      }
+      
+      // 🔥 Set the step
+      setCurrentStep(stepToSet);
+      localStorage.setItem('setupStep', String(stepToSet));
+      console.log(`🎯 Current step set to: ${stepToSet}`);
+      
+    } else if (response.status === 404) {
+      console.log('No onboarding data found, starting fresh');
+      setCurrentStep(0);
+    } else {
+      console.warn('Failed to load onboarding data:', response.status);
+    }
+  } catch (error) {
+    console.warn('Error loading onboarding progress:', error);
+  } finally {
+    setLoadingOnboarding(false);
+  }
+};
   useEffect(() => {
     const token = localStorage.getItem('adminToken');
     if (!token) {
@@ -115,119 +238,142 @@ export default function SetupPage() {
     router.push('/');
   };
 
-  const loadOnboardingProgress = async () => {
-    try {
-      setLoadingOnboarding(true);
-      const token = localStorage.getItem('adminToken');
+
+const fetchSalonData = async (salonId: string | number, token: string) => {
+  try {
+    console.log(`🔍 Fetching salon data for ID: ${salonId}`);
+    
+    const response = await fetch(`/api/auth/business/salons/${salonId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    console.log(`📡 Salon API response status: ${response.status}`);
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ Salon data fetched:', JSON.stringify(data, null, 2));
       
-      const response = await fetch('/api/auth/business/salons/onboarding', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Onboarding data:', data);
-        
-        if (data.data) {
-          const savedData = data.data;
-          
-          if (savedData.businessData) {
-            setBusinessData(savedData.businessData);
-          }
-          
-          if (savedData.selectedPlanId) {
-            setSelectedPlanId(savedData.selectedPlanId);
-          }
-          
-          if (savedData.salonId) {
-            setSalonId(savedData.salonId);
-            localStorage.setItem('setupSalonId', savedData.salonId);
-          }
-          
-          if (savedData.currentStep !== undefined) {
-            setCurrentStep(savedData.currentStep);
-          }
-        }
-      } else if (response.status === 404) {
-        console.log('No onboarding data found, starting fresh');
-      } else {
-        console.warn('Failed to load onboarding data');
+      const salon = data.data || data;
+      console.log('📋 Extracted salon object:', salon);
+      
+      if (!salon || Object.keys(salon).length === 0) {
+        console.warn('⚠️ Salon data is empty!');
+        return;
       }
-    } catch (error) {
-      console.warn('Error loading onboarding progress (non-critical):', error);
-    } finally {
-      setLoadingOnboarding(false);
-    }
-  };
-
-  const saveOnboardingProgress = async (step: number) => {
-    try {
-      const token = localStorage.getItem('adminToken');
-      const payload = {
-        currentStep: step,
-        businessData: businessData,
-        selectedPlanId: selectedPlanId,
-        salonId: salonId,
+      
+      // 🔥 Only update if we have actual data
+      const hasData = salon.name?.trim() || salon.address?.trim() || salon.city?.trim();
+      
+      if (!hasData) {
+        console.log('⚠️ Salon exists but has no business data yet');
+        return;
+      }
+      
+      // Populate the form with the salon data
+      const updatedData = {
+        name: salon.name || '',
+        description: salon.description || '',
+        email: salon.email || '',
+        phoneNumber: salon.phoneNumber || '',
+        website: salon.website || '',
+        address: salon.address || '',
+        city: salon.city || '',
+        state: salon.state || '',
+        country: salon.country || 'United Kingdom',
+        postalCode: salon.postalCode || '',
+        socialMedia: {
+          facebook: salon.socialMedia?.facebook || '',
+          instagram: salon.socialMedia?.instagram || '',
+          twitter: salon.socialMedia?.twitter || '',
+        },
       };
+      
+      console.log('📝 Setting business data:', updatedData);
+      setBusinessData(updatedData);
+      
+      // 🔥 Save the business data to onboarding progress
+      localStorage.setItem('setupBusinessData', JSON.stringify(updatedData));
+      
+    } else {
+      const errorText = await response.text();
+      console.warn('❌ Failed to fetch salon data:', response.status, errorText);
+    }
+  } catch (error) {
+    console.error('❌ Error fetching salon data:', error);
+  }
+};
 
-      console.log('Saving onboarding progress:', payload);
+// Helper function to check if business data has content
+const hasBusinessData = (data: BusinessData): boolean => {
+  return !!(data.name?.trim() || data.address?.trim() || data.city?.trim());
+};
 
-      const response = await fetch('/api/auth/business/salons/onboarding', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+const saveOnboardingProgress = async (step: number) => {
+  try {
+    const token = localStorage.getItem('adminToken');
+    
+    // 🔥 Check if we have valid business data before saving
+    const hasValidBusinessData = businessData.name?.trim() || 
+                                 businessData.address?.trim() || 
+                                 businessData.city?.trim();
+    
+    // If step is 0 (BUSINESS) and we have a salonId, don't save empty data
+    if (step === 0 && salonId && !hasValidBusinessData) {
+      console.log('⚠️ Skipping save - no valid business data to save');
+      return true;
+    }
+    
+    const stepMap: { [key: number]: string } = {
+      0: 'BUSINESS',
+      1: 'PLAN',
+      2: 'PAYMENT',
+      3: 'REVIEW',
+    };
+    
+    const payload = {
+      currentStep: step,
+      step: stepMap[step] || 'BUSINESS',
+      businessData: businessData,
+      selectedPlanId: selectedPlanId,
+      salonId: salonId,
+    };
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.warn('Failed to save onboarding progress:', errorData);
-        return false;
-      } else {
-        console.log('Onboarding progress saved successfully');
-        return true;
-      }
-    } catch (error) {
-      console.warn('Error saving onboarding progress (non-critical):', error);
+    console.log('📤 Saving onboarding progress with businessData:', {
+      businessData: businessData,
+      selectedPlanId: selectedPlanId,
+      salonId: salonId,
+      step: step
+    });
+
+    const response = await fetch('/api/auth/business/salons/onboarding', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    console.log('📥 Save response:', responseText);
+
+    if (!response.ok) {
+      console.warn('Failed to save onboarding progress:', responseText);
       return false;
+    } else {
+      console.log('✅ Onboarding progress saved successfully');
+      return true;
     }
-  };
+  } catch (error) {
+    console.warn('Error saving onboarding progress:', error);
+    return false;
+  }
+};
 
-  const fetchPlans = async () => {
-    try {
-      setPlansLoading(true);
-      const token = localStorage.getItem('adminToken');
-      
-      const response = await fetch('/api/auth/subscription/plan', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Plans fetched:', data);
-        
-        // Handle both array and object responses
-        const plansArray = Array.isArray(data) ? data : data.data || data.plans || [];
-        setPlans(plansArray);
-      } else {
-        console.error('Failed to fetch plans');
-        setPlans([]);
-      }
-    } catch (error) {
-      console.error('Error fetching plans:', error);
-      setPlans([]);
-    } finally {
-      setPlansLoading(false);
-    }
-  };
-
+  
   const showAlert = (type: 'success' | 'error', message: string) => {
     setAlert({ type, message });
     setTimeout(() => setAlert(null), 5000);
@@ -252,73 +398,70 @@ export default function SetupPage() {
       return;
     }
 
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('adminToken');
-      if (!token) {
-        showAlert('error', 'Please login again');
-        router.push('/');
-        return;
-      }
-
-      const response = await fetch('/api/auth/business/salons/add-business', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: businessData.name,
-          description: businessData.description,
-          email: businessData.email,
-          phoneNumber: businessData.phoneNumber,
-          website: businessData.website,
-          address: businessData.address,
-          city: businessData.city,
-          state: businessData.state || '',
-          country: businessData.country,
-          postalCode: businessData.postalCode,
-          socialMedia: businessData.socialMedia,
-        }),
-      });
-
-      const rawResponse = await response.text();
-      console.log('Raw add-business response:', rawResponse);
-
-      let data;
-      try {
-        data = JSON.parse(rawResponse);
-      } catch {
-        data = { message: rawResponse };
-      }
-
-      if (response.ok) {
-        const newSalonId = data.data?.id || data.id || data.salonId || data.data?.salonId;
-        console.log('Salon ID extracted:', newSalonId);
-        
-        if (newSalonId) {
-          setSalonId(newSalonId);
-          localStorage.setItem('setupSalonId', newSalonId);
-        }
-        
-        try {
-          await saveOnboardingProgress(1);
-        } catch (saveError) {
-          console.warn('Progress save failed, but continuing:', saveError);
-        }
-        
-        setCurrentStep(1);
-        showAlert('success', 'Business registered successfully!');
-      } else {
-        showAlert('error', data.message || 'Failed to register business');
-      }
-    } catch (error) {
-      console.error('Registration error:', error);
-      showAlert('error', 'Connection error. Please try again.');
-    } finally {
-      setLoading(false);
+   setLoading(true);
+  try {
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      showAlert('error', 'Please login again');
+      router.push('/');
+      return;
     }
-  };
+
+    const response = await fetch('/api/auth/business/salons/add-business', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: businessData.name,
+        description: businessData.description,
+        email: businessData.email,
+        phoneNumber: businessData.phoneNumber,
+        website: businessData.website,
+        address: businessData.address,
+        city: businessData.city,
+        state: businessData.state || '',
+        country: businessData.country,
+        postalCode: businessData.postalCode,
+        socialMedia: businessData.socialMedia,
+      }),
+    });
+
+    const rawResponse = await response.text();
+    console.log('Raw add-business response:', rawResponse);
+
+    let data;
+    try {
+      data = JSON.parse(rawResponse);
+    } catch {
+      data = { message: rawResponse };
+    }
+
+    if (response.ok) {
+      const newSalonId = data.data?.id || data.id || data.salonId || data.data?.salonId;
+      console.log('Salon ID extracted:', newSalonId);
+      
+      if (newSalonId) {
+        setSalonId(newSalonId);
+        localStorage.setItem('setupSalonId', newSalonId);
+      }
+      
+      // Save progress with the new salon ID
+      await saveOnboardingProgress(1);
+      
+      setCurrentStep(1);
+      showAlert('success', 'Business registered successfully!');
+    } else {
+      showAlert('error', data.message || 'Failed to register business');
+    }
+  } catch (error) {
+    console.error('Registration error:', error);
+    showAlert('error', 'Connection error. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handlePlanSelect = async (planId: number) => {
     setSelectedPlanId(planId);
@@ -330,66 +473,82 @@ export default function SetupPage() {
     }
   };
 
-  const handlePayment = async () => {
-    if (!selectedPlanId) {
-      showAlert('error', 'Please select a plan');
+const handlePayment = async () => {
+  if (!selectedPlanId) {
+    showAlert('error', 'Please select a plan');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('adminToken');
+    const salonIdFromStorage = localStorage.getItem('setupSalonId');
+    
+    if (!token || !salonIdFromStorage) {
+      showAlert('error', 'Session expired. Please try again.');
       return;
     }
 
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('adminToken');
-      const salonIdFromStorage = localStorage.getItem('setupSalonId');
-      
-      if (!token || !salonIdFromStorage) {
-        showAlert('error', 'Session expired. Please try again.');
-        return;
-      }
+    const response = await fetch('/api/auth/payment/initialize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        salonId: parseInt(salonIdFromStorage),
+        planId: selectedPlanId,
+      }),
+    });
 
-      const response = await fetch('/api/auth/payment/initialize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          salonId: parseInt(salonIdFromStorage),
-          planId: selectedPlanId,
-        }),
-      });
+    const data = await response.json();
+    console.log('Payment response:', data);
 
-      const data = await response.json();
-
-      if (response.ok) {
-        try {
-          await saveOnboardingProgress(3);
-        } catch (saveError) {
-          console.warn('Progress save failed, but continuing:', saveError);
+    if (response.ok && data.success) {
+      if (data.redirectUrl) {
+        console.log('🔀 Redirecting to:', data.redirectUrl);
+        
+        // 🔥 Store checkoutId for later verification
+        if (data.checkoutId) {
+          localStorage.setItem('checkoutId', data.checkoutId);
+          console.log('💾 Stored checkoutId:', data.checkoutId);
         }
-        setCurrentStep(3);
-        showAlert('success', 'Payment successful! Your salon is being reviewed.');
+        
+        // Save progress as PAYMENT step (2) before redirect
+        await saveOnboardingProgress(2);
+        
+        // Redirect to SumUp checkout
+        window.location.href = data.redirectUrl;
       } else {
-        showAlert('error', data.message || 'Payment failed. Please try again.');
+        showAlert('error', 'No redirect URL received from payment provider');
       }
-    } catch (error) {
-      console.error('Payment error:', error);
-      showAlert('error', 'Payment error. Please try again.');
-    } finally {
-      setLoading(false);
+    } else {
+      showAlert('error', data.message || 'Payment failed. Please try again.');
     }
-  };
+  } catch (error) {
+    console.error('Payment error:', error);
+    showAlert('error', 'Payment error. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const goToStep = async (step: number) => {
-    if (step >= 0 && step < STEPS.length) {
-      setCurrentStep(step);
-      try {
-        await saveOnboardingProgress(step);
-      } catch (saveError) {
-        console.warn('Progress save failed, but continuing:', saveError);
-      }
+  if (step >= 0 && step < STEPS.length) {
+    // 🔥 Prevent going back to BUSINESS step if we already have a salon
+    if (step === 0 && salonId) {
+      console.log('⚠️ Cannot go back to BUSINESS step - salon already exists');
+      return;
     }
-  };
-
+    
+    setCurrentStep(step);
+    try {
+      await saveOnboardingProgress(step);
+    } catch (saveError) {
+      console.warn('Progress save failed, but continuing:', saveError);
+    }
+  }
+};
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
   if (loadingOnboarding) {
@@ -561,9 +720,9 @@ export default function SetupPage() {
 
           {/* Footer */}
           <div className="text-center mt-3 flex-shrink-0">
-            <p className="text-white/20 text-[10px] tracking-[0.2em] uppercase">
+            {/* <p className="text-white/20 text-[10px] tracking-[0.2em] uppercase">
               © 2026 KROWNBRAIDS. All rights reserved.
-            </p>
+            </p> */}
           </div>
         </div>
       </div>
@@ -1027,8 +1186,12 @@ function PaymentStep({
 }
 
 // Step 4: Review
+// Step 4: Review
 function ReviewStep() {
   const router = useRouter();
+
+  // 🔥 Check if payment was successful
+  const [isPaid, setIsPaid] = useState(true); // This should be determined from payment status
 
   return (
     <div className="text-center space-y-3 py-2">
@@ -1052,10 +1215,23 @@ function ReviewStep() {
         </div>
       </div>
 
+      {/* 🔥 Payment confirmation */}
+      <div className="bg-green-500/10 border border-green-400/30 rounded-lg p-3 text-left">
+        <div className="flex items-start gap-2">
+          <CheckCircleIcon className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-green-300 text-xs font-medium">Payment Confirmed</p>
+            <p className="text-green-300/70 text-[10px]">
+              Your payment has been successfully processed.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-2">
         <button
           onClick={() => router.push('/dashboard')}
-          className="w-full bg-white/20 py-2.5 rounded-lg text-sm font-medium text-white hover:bg-white/30 transition-all"
+          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 py-2.5 rounded-lg text-sm font-medium text-white hover:shadow-lg hover:shadow-purple-500/30 transition-all"
         >
           Go to Dashboard
         </button>

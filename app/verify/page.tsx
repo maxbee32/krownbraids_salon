@@ -145,7 +145,7 @@ export default function VerifyPage() {
         localStorage.removeItem('adminData');
         
         setTimeout(() => {
-          router.push('/login');
+          router.push('/');
         }, 3000);
       } else {
         if (data.requiresNewToken) {

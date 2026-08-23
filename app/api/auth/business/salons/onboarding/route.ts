@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 // CONFIGURATION
 // =====================================================
 
-const BACKEND_BASE = "https://178e-82-36-98-104.ngrok-free.app";
-const BACKEND_URL = `${BACKEND_BASE}/bservice/api/auth/v1/business/salons`;
+const BACKEND_BASE = "https://7421-82-36-98-104.ngrok-free.app";
+const BACKEND_URL = `${BACKEND_BASE}/bservice/api/v1/auth/business/salons`;
 
 // =====================================================
 // TYPES
