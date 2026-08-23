@@ -40,7 +40,7 @@ interface SalonData {
   updatedAt: string;
 }
 
-// 🔥 Helper function to format status for display
+// Helper function to format status for display
 const formatStatus = (status: string): { label: string; color: string; icon: any } => {
   const statusMap: { [key: string]: { label: string; color: string; icon: any } } = {
     'PENDING_APPROVAL': {
@@ -131,10 +131,10 @@ export default function DashboardPage() {
         // Get the salon ID from the onboarding data
         const salonId = onboardingData.salonId || onboardingData.id;
         
+        // 🔥 If no salon ID, redirect to setup
         if (!salonId) {
-          console.warn('⚠️ No salon ID found in onboarding data');
-          setError('No salon found');
-          setLoading(false);
+          console.log('⚠️ No salon ID found, redirecting to setup');
+          router.push('/dashboard/setup');
           return;
         }
 
@@ -271,7 +271,7 @@ export default function DashboardPage() {
 
 // Pending Approval Page Component
 function PendingApprovalPage({ salon, router }: { salon: SalonData | null; router: any }) {
-  // 🔥 Format the status for display
+  // Format the status for display
   const statusDisplay = salon?.status ? formatStatus(salon.status) : { label: 'Pending Approval', color: 'text-yellow-400', icon: ClockIcon };
   
   const salonName = salon?.name || 'Your Salon';
