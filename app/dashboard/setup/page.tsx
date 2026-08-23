@@ -135,6 +135,11 @@ const loadOnboardingProgress = async () => {
   try {
     setLoadingOnboarding(true);
     const token = localStorage.getItem('adminToken');
+    if (!token) {
+      console.warn('No admin token found while loading onboarding progress');
+      setCurrentStep(0);
+      return;
+    }
     
     const response = await fetch('/api/auth/business/salons/onboarding', {
       method: 'GET',
