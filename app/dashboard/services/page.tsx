@@ -79,7 +79,6 @@ interface SalonData {
 
 export default function ServicesPage() {
   const router = useRouter();
-  // ✅ Get context functions
   const { incrementServiceCount, decrementServiceCount } = useServiceContext();
   
   const [services, setServices] = useState<Service[]>([]);
@@ -115,6 +114,58 @@ export default function ServicesPage() {
     requiresBooking: true,
     images: [],
   });
+
+  // ✅ Helper function to fetch images with ngrok header
+  const fetchImageWithHeader = async (url: string): Promise<string> => {
+    try {
+      // Only fetch if it's an ngrok URL
+      if (!url.includes('ngrok-free.app')) {
+        return url;
+      }
+      
+      const response = await fetch(url, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch image:', response.status);
+        return url;
+      }
+      
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Error fetching image:', error);
+      return url;
+    }
+  };
+
+  // ✅ Helper function to load images for a service
+  const loadServiceImages = async (service: Service): Promise<Service> => {
+    if (service.serviceImages && service.serviceImages.length > 0) {
+      const loadedImages = await Promise.all(
+        service.serviceImages.map(async (imgUrl: string) => {
+          return await fetchImageWithHeader(imgUrl);
+        })
+      );
+      return { ...service, serviceImages: loadedImages };
+    }
+    return service;
+  };
+
+  // ✅ Clean up object URLs
+  useEffect(() => {
+    return () => {
+      // Clean up all object URLs when component unmounts
+      imagePreview.forEach(url => {
+        if (url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [imagePreview]);
 
   // Fetch salon, services, and categories on mount
   useEffect(() => {
@@ -228,7 +279,13 @@ export default function ServicesPage() {
       if (servicesResponse.ok) {
         const servicesData = await servicesResponse.json();
         const serviceList = Array.isArray(servicesData) ? servicesData : servicesData.data || [];
-        setServices(serviceList);
+        
+        // ✅ Load images for each service
+        const servicesWithImages = await Promise.all(
+          serviceList.map((service: Service) => loadServiceImages(service))
+        );
+        
+        setServices(servicesWithImages);
       } else {
         const errorData = await servicesResponse.json();
         console.error("Services API error:", errorData);
@@ -393,7 +450,6 @@ export default function ServicesPage() {
         setSuccessMessage('Service updated successfully!');
       } else {
         setServices([savedService, ...services]);
-        // ✅ Increment the service count on dashboard
         incrementServiceCount();
         setSuccessMessage('Service created successfully!');
       }
@@ -435,7 +491,6 @@ export default function ServicesPage() {
       }
 
       setServices(services.filter(s => s.id !== serviceId));
-      // ✅ Decrement the service count on dashboard
       decrementServiceCount();
       setShowDeleteConfirm(null);
       setSuccessMessage('Service deleted successfully!');
@@ -751,7 +806,7 @@ export default function ServicesPage() {
                     </div>
                   </div>
 
-                  {/* Images */}
+                  {/* Images - ✅ Using the fetched image URLs */}
                   {service.serviceImages && service.serviceImages.length > 0 && (
                     <div className="grid grid-cols-3 gap-1 mb-3">
                       {service.serviceImages.slice(0, 3).map((img, idx) => (
