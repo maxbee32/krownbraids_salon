@@ -1,10 +1,13 @@
+// app/context/ServiceContext.tsx
 "use client";
 import { createContext, useContext, useState, ReactNode } from 'react';
 
 interface ServiceContextType {
   serviceCount: number;
   setServiceCount: (count: number) => void;
-  refreshServiceCount: () => void;
+  refreshServiceCount: () => Promise<void>;
+  incrementServiceCount: () => void;  // ✅ Add this
+  decrementServiceCount: () => void;  // ✅ Add this
 }
 
 const ServiceContext = createContext<ServiceContextType | undefined>(undefined);
@@ -42,8 +45,22 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const incrementServiceCount = () => {
+    setServiceCount(prev => prev + 1);
+  };
+
+  const decrementServiceCount = () => {
+    setServiceCount(prev => Math.max(0, prev - 1));
+  };
+
   return (
-    <ServiceContext.Provider value={{ serviceCount, setServiceCount, refreshServiceCount }}>
+    <ServiceContext.Provider value={{ 
+      serviceCount, 
+      setServiceCount, 
+      refreshServiceCount,
+      incrementServiceCount,
+      decrementServiceCount
+    }}>
       {children}
     </ServiceContext.Provider>
   );

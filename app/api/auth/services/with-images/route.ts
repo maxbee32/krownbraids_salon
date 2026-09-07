@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.substring(7);
     
-    // Get salonId from query params
     const { searchParams } = new URL(request.url);
     const salonId = searchParams.get("salonId");
 
@@ -29,22 +28,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse form data
     const formData = await request.formData();
     
-    // ✅ Extract service data - handle both formats
+    // ✅ Extract service data
     let serviceJson: any;
     const serviceData = formData.get("service");
     
     if (serviceData instanceof Blob) {
       const text = await serviceData.text();
-      console.log("Service data from Blob:", text);
       serviceJson = JSON.parse(text);
     } else if (typeof serviceData === "string") {
-      console.log("Service data from string:", serviceData);
       serviceJson = JSON.parse(serviceData);
     } else {
-      console.log("Service data is:", serviceData);
       // Fallback: build from individual fields
       serviceJson = {
         name: formData.get("name") as string,
@@ -62,9 +57,10 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Get images from form data
+    // ✅ Get images - using for...of with proper typing
     const images: File[] = [];
-    for (const [key, value] of formData.entries()) {
+    const entries = Array.from(formData.entries());
+    for (const [key, value] of entries) {
       if (key === "images" && value instanceof File) {
         images.push(value);
       }
@@ -73,31 +69,16 @@ export async function POST(request: NextRequest) {
     console.log("Service payload:", serviceJson);
     console.log("Images:", images.length);
 
-    // ✅ Create new FormData for backend with correct content type
     const backendFormData = new FormData();
-    
-    // ✅ Send service data as a Blob with proper content type
     const serviceBlob = new Blob([JSON.stringify(serviceJson)], {
       type: 'application/json'
     });
     backendFormData.append("service", serviceBlob, "service.json");
     
-    // Append images
     images.forEach((image) => {
       backendFormData.append("images", image);
     });
 
-    // Log what we're sending
-    console.log("Backend FormData entries:");
-    for (const [key, value] of backendFormData.entries()) {
-      if (value instanceof File || value instanceof Blob) {
-        console.log(`${key}: ${value instanceof File ? value.name : 'blob'} (${value.size} bytes)`);
-      } else {
-        console.log(`${key}: ${value}`);
-      }
-    }
-
-    // Call backend with /with-images endpoint
     const backendUrl = `${BACKEND_URL}/salon/${salonId}/with-images`;
     console.log("Calling backend:", backendUrl);
 
@@ -105,14 +86,12 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
-        // DO NOT set Content-Type - browser will set it with boundary
       },
       body: backendFormData,
     });
 
     const rawResponse = await backendResponse.text();
     console.log("Raw backend response:", rawResponse);
-    console.log("Backend status:", backendResponse.status);
 
     let data;
     try {
