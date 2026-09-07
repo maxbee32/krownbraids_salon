@@ -11,11 +11,15 @@ const BACKEND_URL =
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // ✅ Await the params (Next.js 15+)
+    const params = await context.params;
+    const categoryId = params.id;
+    
     console.log("=== Get Category by ID API Route ===");
-    console.log("Category ID:", params.id);
+    console.log("Category ID:", categoryId);
 
     // Get the authorization token from the request headers
     const authHeader = request.headers.get("authorization");
@@ -31,7 +35,16 @@ export async function GET(
     }
 
     const token = authHeader.substring(7);
-    const categoryId = params.id;
+
+    if (!categoryId) {
+      return NextResponse.json(
+        {
+          message: "Category ID is required",
+          error: "MISSING_ID"
+        },
+        { status: 400 }
+      );
+    }
 
     const backendUrl = `${BACKEND_URL}/categories/${categoryId}`;
     console.log("Calling backend:", backendUrl);

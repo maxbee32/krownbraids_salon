@@ -11,7 +11,7 @@ const BACKEND_URL =
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }  // ✅ Change this line
 ) {
   try {
     // ✅ In Next.js 15+, you need to await params
