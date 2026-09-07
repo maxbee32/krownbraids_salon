@@ -11,7 +11,7 @@ const BACKEND_URL =
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }  // ✅ Fixed
 ) {
   try {
     // ✅ Important: Await params in Next.js 15+
@@ -90,7 +90,7 @@ export async function DELETE(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }  // ✅ Fixed
 ) {
   try {
     const params = await context.params;
@@ -166,7 +166,7 @@ export async function PUT(
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }  // ✅ Fixed
 ) {
   try {
     const params = await context.params;
