@@ -1,6 +1,16 @@
 // app/api/auth/services/with-images/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+    responseLimit: false,
+  },
+};
+
 const BACKEND_URL =
   "https://f6f8-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
 
