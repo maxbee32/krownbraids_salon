@@ -12,7 +12,7 @@ export const config = {
 };
 
 const BACKEND_URL =
-  "https://f6f8-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
+  "https://3555-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
 
 export async function POST(request: NextRequest) {
   try {

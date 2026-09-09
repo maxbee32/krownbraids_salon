@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://f6f8-82-36-98-104.ngrok-free.app/sservice/api/v1/auth/salon-owner";
+  "https://3555-82-36-98-104.ngrok-free.app/sservice/api/v1/auth/salon-owner";
 
 // =====================================================
 // VERIFY SALON OWNER EMAIL
