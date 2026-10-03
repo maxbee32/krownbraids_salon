@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BACKEND_URL = "https://3555-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment/";
+const BACKEND_URL = "https://58bb-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment/";
 
 export async function GET(
   request: Request,

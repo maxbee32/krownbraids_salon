@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { 
-  EnvelopeIcon, 
-  KeyIcon, 
-  EyeIcon, 
+import {
+  EnvelopeIcon,
+  KeyIcon,
+  EyeIcon,
   EyeSlashIcon,
   UserIcon,
   PhoneIcon,
@@ -27,6 +27,7 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -50,14 +51,22 @@ export default function SignupPage() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters");
+      setLoading(false);
+      return;
+    }
+
+    // UK mobile number validation
+    const ukPhone = /^(\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}$/;
+    if (!ukPhone.test(formData.phoneNumber.replace(/\s/g, ""))) {
+      setError("Please enter a valid UK mobile number (e.g. 07123 456789)");
       setLoading(false);
       return;
     }
 
     if (!agreeTerms) {
-      setError("Please agree to the terms and conditions");
+      setError("Please agree to the Terms of Service to continue");
       setLoading(false);
       return;
     }
@@ -72,6 +81,8 @@ export default function SignupPage() {
           email: formData.email,
           phoneNumber: formData.phoneNumber,
           password: formData.password,
+          marketingOptIn,
+          country: "GB",
         }),
       });
 
@@ -88,7 +99,7 @@ export default function SignupPage() {
         }
         // Store email for verification page
         localStorage.setItem('verifyEmail', formData.email);
-        
+
         setTimeout(() => {
           router.push('/verify'); // Redirect to verification page
         }, 2000);
@@ -96,6 +107,7 @@ export default function SignupPage() {
         setError(data.message || 'Signup failed. Please try again.');
       }
     } catch (err) {
+      console.error("Signup error:", err);
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
@@ -131,15 +143,18 @@ export default function SignupPage() {
       <div className="relative z-10 w-full max-w-lg mx-4">
         {/* Glassmorphism Card */}
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 shadow-2xl shadow-black/30 overflow-hidden max-h-[90vh]">
-          
+
           {/* Card Header Gradient Line */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent"></div>
-          
+
+          {/* Decorative Bottom Glow — OUTSIDE the scroll area so it stays fixed */}
+          <div className="pointer-events-none absolute -bottom-20 -left-20 w-40 h-40 bg-purple-500/10 rounded-full blur-2xl"></div>
+          <div className="pointer-events-none absolute -bottom-20 -right-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl"></div>
+
           {/* Card Content - Scrollable */}
-          <div className="p-6 md:p-8 overflow-y-auto max-h-[90vh] custom-scrollbar">
+          <div className="relative p-6 md:p-8 overflow-y-auto max-h-[90vh] custom-scrollbar">
             {/* Logo/Brand */}
             <div className="flex items-center justify-center gap-3 mb-6">
-              
               <span className="text-2xl font-bold text-white tracking-tight">
                 KROWN<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">BRAIDS</span>
               </span>
@@ -153,9 +168,9 @@ export default function SignupPage() {
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">Account Created!</h2>
                 <p className="text-white/60 text-sm">
-                  Please check your email for verification.
+                  We've sent a verification link to your email.
                   <br />
-                  Redirecting to verification...
+                  Redirecting you now...
                 </p>
               </div>
             ) : (
@@ -163,7 +178,7 @@ export default function SignupPage() {
                 {/* Welcome Text */}
                 <div className="text-center mb-6">
                   <h1 className="text-2xl font-bold text-white mb-2">Create Account</h1>
-                  <p className="text-white/40 text-sm">Start managing your salon today</p>
+                  <p className="text-white/40 text-sm">Create your salon owner account</p>
                 </div>
 
                 {/* Error Message */}
@@ -189,7 +204,7 @@ export default function SignupPage() {
                         name="firstName"
                         value={formData.firstName}
                         onChange={handleChange}
-                        placeholder="Enter your first name"
+                        placeholder="e.g. Amara"
                         required
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
@@ -210,7 +225,7 @@ export default function SignupPage() {
                         name="lastName"
                         value={formData.lastName}
                         onChange={handleChange}
-                        placeholder="Enter your last name"
+                        placeholder="e.g. Okafor"
                         required
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
@@ -231,7 +246,7 @@ export default function SignupPage() {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        placeholder="Enter your email"
+                        placeholder="you@example.co.uk"
                         required
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
@@ -241,7 +256,7 @@ export default function SignupPage() {
                   {/* Phone Number */}
                   <div className="group">
                     <label className="block text-white/40 text-xs font-medium mb-1.5 tracking-wide">
-                      PHONE NUMBER
+                      MOBILE NUMBER
                     </label>
                     <div className="relative">
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-cyan-400 transition-colors">
@@ -252,11 +267,14 @@ export default function SignupPage() {
                         name="phoneNumber"
                         value={formData.phoneNumber}
                         onChange={handleChange}
-                        placeholder="Enter your phone number"
+                        placeholder="07123 456789"
                         required
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                     </div>
+                    <p className="text-white/30 text-[10px] mt-1.5 pl-1">
+                      UK mobile number — we'll use this to send booking reminders
+                    </p>
                   </div>
 
                   {/* Password */}
@@ -273,9 +291,9 @@ export default function SignupPage() {
                         name="password"
                         value={formData.password}
                         onChange={handleChange}
-                        placeholder="Create a password (min 6 characters)"
+                        placeholder="Create a password (min 8 characters)"
                         required
-                        minLength={6}
+                        minLength={8}
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                       <button
@@ -324,8 +342,9 @@ export default function SignupPage() {
                     </div>
                   </div>
 
-                  {/* Terms & Conditions */}
-                  <div className="pt-2">
+                  {/* Terms & Conditions + Marketing opt-in */}
+                  <div className="pt-2 space-y-3">
+                    {/* Terms */}
                     <label className="flex items-start gap-3 cursor-pointer group">
                       <div className="relative mt-0.5 flex-shrink-0">
                         <input
@@ -335,8 +354,8 @@ export default function SignupPage() {
                           className="sr-only"
                         />
                         <div className={`w-5 h-5 rounded border transition-all ${
-                          agreeTerms 
-                            ? 'bg-gradient-to-r from-cyan-400 to-purple-500 border-transparent' 
+                          agreeTerms
+                            ? 'bg-gradient-to-r from-cyan-400 to-purple-500 border-transparent'
                             : 'border-white/20 group-hover:border-white/40'
                         }`}>
                           {agreeTerms && (
@@ -365,13 +384,40 @@ export default function SignupPage() {
                         </button>
                       </span>
                     </label>
+
+                    {/* Marketing opt-in (UK GDPR / PECR compliant) */}
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <div className="relative mt-0.5 flex-shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={marketingOptIn}
+                          onChange={(e) => setMarketingOptIn(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div className={`w-5 h-5 rounded border transition-all ${
+                          marketingOptIn
+                            ? 'bg-gradient-to-r from-cyan-400 to-purple-500 border-transparent'
+                            : 'border-white/20 group-hover:border-white/40'
+                        }`}>
+                          {marketingOptIn && (
+                            <svg className="w-4 h-4 text-white m-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-white/40 text-xs group-hover:text-white/60 transition-colors leading-relaxed">
+                        Send me occasional tips, updates, and offers from KrownBraids.
+                        You can unsubscribe at any time.
+                      </span>
+                    </label>
                   </div>
 
                   {/* Signup Button */}
                   <button
                     type="submit"
                     disabled={loading}
-                    className="relative w-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl py-3.5 text-white font-semibold hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 group overflow-hidden"
+                    className="relative w-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl py-3.5 text-white font-semibold hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 group overflow-hidden disabled:opacity-60"
                   >
                     <span className="relative z-10 flex items-center justify-center gap-2">
                       {loading ? (
@@ -401,22 +447,18 @@ export default function SignupPage() {
                       onClick={() => router.push('/login')}
                       className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 font-semibold hover:from-cyan-300 hover:to-purple-300 transition-all"
                     >
-                      Login Now
+                      Sign In
                     </button>
                   </p>
                 </div>
               </>
             )}
-
-            {/* Decorative Bottom Glow */}
-            <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-purple-500/10 rounded-full blur-2xl"></div>
-            <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl"></div>
           </div>
         </div>
 
         {/* Footer Text */}
         <p className="text-center text-white/20 text-xs mt-6 tracking-widest uppercase">
-          Secure Registration • 256-bit Encryption
+          Secure Registration • UK GDPR Compliant
         </p>
       </div>
 
