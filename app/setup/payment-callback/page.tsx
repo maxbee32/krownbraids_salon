@@ -26,6 +26,14 @@ function PaymentCallbackContent() {
       try {
         const token = localStorage.getItem("adminToken");
 
+        // ← guard: no token means no point hitting the API
+        if (!token) {
+          setStatus("error");
+          setMessage("Your session expired. Please sign in again.");
+          setTimeout(() => router.push("/login"), 3000);
+          return;
+        }
+
         let checkoutId = searchParams.get("checkoutId");
         const statusParam = searchParams.get("status");
         const salonIdParam = searchParams.get("salonId");
@@ -73,24 +81,24 @@ function PaymentCallbackContent() {
 
         if (isPaid) {
           setStatus("success");
-          setMessage("Payment received. Redirecting to review…");
+          setMessage("Payment received. Redirecting…");
 
           const salonId = salonIdParam || localStorage.getItem("setupSalonId");
           const planId =
             planIdParam || localStorage.getItem("setupSelectedPlanId");
 
+          // ← match the PUT shape used by /dashboard/setup
           try {
             await fetch("/api/auth/business/salons/onboarding", {
-              method: "POST",
+              method: "PUT",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify({
-                currentStep: 3,
-                step: "REVIEW",
-                completed: false,
                 salonId,
+                step: "COMPLETED",
+                completed: true,
                 selectedPlanId: planId,
               }),
             });
@@ -102,7 +110,8 @@ function PaymentCallbackContent() {
           localStorage.setItem("paymentStatus", "success");
           localStorage.removeItem("checkoutId");
 
-          setTimeout(() => router.push("/dashboard/setup"), 2000);
+          // ← go straight to /pending, skip the setup bounce
+          setTimeout(() => router.push("/pending"), 2000);
         } else {
           setStatus("error");
           setMessage(
@@ -135,7 +144,7 @@ function PaymentCallbackContent() {
           />
           <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60" />
-          <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay" />
+          {/* <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay" /> */}
         </div>
       </div>
 
@@ -151,7 +160,7 @@ function PaymentCallbackContent() {
         <div className="w-full max-w-md">
           {/* Brand */}
           <div className="text-center mb-6">
-            <span className="text-lg font-bold tracking-tight text-white">
+            <span className="font-display text-lg font-extrabold tracking-tight text-white">
               KROWN
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
                 BRAIDS
@@ -195,7 +204,7 @@ function PaymentCallbackContent() {
                   <p className="text-white/50 text-sm">{message}</p>
 
                   <div className="mt-6 flex items-center justify-center gap-2 text-cyan-300 text-xs">
-                    <span>Redirecting to review</span>
+                    <span>Redirecting to application status</span>
                     <ArrowRightIcon className="h-3.5 w-3.5 animate-pulse" />
                   </div>
                 </>

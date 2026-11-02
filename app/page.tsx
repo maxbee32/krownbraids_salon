@@ -1,25 +1,14 @@
 // app/page.tsx
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowRightIcon,
   XMarkIcon,
   Bars3Icon,
-  StarIcon,
   UsersIcon,
-  HeartIcon,
-  SparklesIcon,
-  ScissorsIcon,
-  SwatchIcon,
-  CameraIcon,
-  GiftIcon,
-  PhoneIcon,
-  TrophyIcon,
   CalendarDaysIcon,
-  BuildingStorefrontIcon,
-  GlobeAltIcon,
   ShoppingBagIcon,
   TruckIcon,
   CreditCardIcon,
@@ -29,6 +18,8 @@ import {
   BanknotesIcon,
   Squares2X2Icon,
   LockClosedIcon,
+  PhoneIcon,
+  GlobeAltIcon,
 } from "@heroicons/react/24/outline";
 
 /* ------------------------------------------------------------------ */
@@ -36,7 +27,9 @@ import {
 /* ------------------------------------------------------------------ */
 function Logo({ className = "" }: { className?: string }) {
   return (
-    <span className={`text-2xl font-bold text-white tracking-tight ${className}`}>
+    <span
+      className={`font-display text-2xl font-bold text-white tracking-tight ${className}`}
+    >
       KROWN
       <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
         BRAIDS
@@ -89,7 +82,10 @@ function GradientButton({
     );
   }
   return (
-    <button onClick={onClick} className={`${base} ${variants[variant]} ${className}`}>
+    <button
+      onClick={onClick}
+      className={`${base} ${variants[variant]} ${className}`}
+    >
       {inner}
     </button>
   );
@@ -105,21 +101,21 @@ function PageBackground() {
         <div className="relative w-full h-full">
           <Image
             src="/assets/styke-12.webp"
-            alt="Background"
+            alt=""
             fill
             priority
+            sizes="100vw"
             className="object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70"></div>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60"></div>
-          <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60" />
         </div>
       </div>
 
       <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-pink-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-pink-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-3xl" />
       </div>
     </>
   );
@@ -131,6 +127,24 @@ function PageBackground() {
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Close on Escape + lock body scroll while open
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [mobileMenuOpen]);
+
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900">
       <PageBackground />
@@ -139,21 +153,33 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl bg-white/5 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 md:h-20">
-            <Link href="/" className="flex-shrink-0">
+            <Link href="/" className="flex-shrink-0" aria-label="KrownBraids home">
               <Logo />
             </Link>
 
             <div className="hidden md:flex items-center gap-8">
-              <a href="#platform" className="text-sm text-white/60 hover:text-cyan-400 transition-colors">
+              <a
+                href="#platform"
+                className="text-sm text-white/60 hover:text-cyan-400 transition-colors"
+              >
                 Platform
               </a>
-              <a href="#marketplace" className="text-sm text-white/60 hover:text-cyan-400 transition-colors">
+              <a
+                href="#marketplace"
+                className="text-sm text-white/60 hover:text-cyan-400 transition-colors"
+              >
                 Marketplace
               </a>
-              <a href="#pricing" className="text-sm text-white/60 hover:text-cyan-400 transition-colors">
+              <a
+                href="#pricing"
+                className="text-sm text-white/60 hover:text-cyan-400 transition-colors"
+              >
                 Pricing
               </a>
-              <a href="#contact" className="text-sm text-white/60 hover:text-cyan-400 transition-colors">
+              <a
+                href="#contact"
+                className="text-sm text-white/60 hover:text-cyan-400 transition-colors"
+              >
                 Contact
               </a>
             </div>
@@ -184,17 +210,23 @@ export default function LandingPage() {
 
       {/* ============================= MOBILE MENU ============================= */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[100] md:hidden">
+        <div
+          className="fixed inset-0 z-[100] md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
+        >
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-md"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="absolute right-0 top-0 h-full w-80 backdrop-blur-2xl bg-white/5 border-l border-white/10 p-6">
+          <div className="absolute right-0 top-0 h-full w-80 max-w-[85vw] backdrop-blur-2xl bg-white/5 border-l border-white/10 p-6">
             <div className="flex justify-between items-center mb-8">
               <Logo />
               <button
                 onClick={() => setMobileMenuOpen(false)}
                 className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+                aria-label="Close menu"
               >
                 <XMarkIcon className="w-5 h-5 text-white/80" />
               </button>
@@ -243,10 +275,10 @@ export default function LandingPage() {
               <div className="text-center lg:text-left">
                 <div className="inline-flex items-center gap-2 bg-white/5 backdrop-blur-md text-white/80 px-4 py-2 rounded-full text-xs md:text-sm font-medium mb-6 border border-white/10">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                  Trusted by salons across the UK
+                  Built for UK braiding and beauty salons
                 </div>
 
-                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[4.2rem] font-bold text-white leading-[1.05] tracking-tight">
+                <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-[4.2rem] font-extrabold text-white leading-[1.02] tracking-[-0.03em]">
                   Run your salon.
                   <span className="block text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400">
                     Book clients. Stock up.
@@ -254,14 +286,15 @@ export default function LandingPage() {
                 </h1>
 
                 <p className="mt-6 text-base md:text-lg text-white/60 max-w-lg mx-auto lg:mx-0 leading-relaxed">
-                  KrownBraids is the operating system for UK beauty salons.
-                  Take bookings, manage your diary and staff, and order
-                  supplies from vetted wholesalers — all from one dashboard.
+                  KrownBraids gives you the tools to run your braiding or
+                  beauty business properly — bookings, client records, and
+                  a marketplace of vetted UK wholesalers. Start free for
+                  60 days.
                 </p>
 
                 <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
                   <GradientButton href="/signup">
-                    Register Your Salon
+                    Start Free Trial
                     <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </GradientButton>
                   <GradientButton href="/login" variant="outline">
@@ -269,7 +302,7 @@ export default function LandingPage() {
                   </GradientButton>
                 </div>
 
-                <div className="mt-10 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6 text-left">
+                <div className="mt-10 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 text-left">
                   <div className="flex -space-x-3">
                     {["A", "M", "K", "S", "J"].map((letter, i) => (
                       <div
@@ -282,24 +315,16 @@ export default function LandingPage() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-white">
-                      Loved by independent salon owners
+                      Join salon owners using KrownBraids
                     </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <StarIcon
-                          key={i}
-                          className="w-3.5 h-3.5 fill-cyan-400 text-cyan-400"
-                        />
-                      ))}
-                      <span className="text-xs text-white/40 ml-1">
-                        Rated by our salon community
-                      </span>
-                    </div>
+                    <p className="text-xs text-white/40 mt-1">
+                      60-day free trial · No card required · Cancel anytime
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Hero preview — diary + supplier reorder */}
+              {/* Hero preview — diary */}
               <div className="relative lg:flex justify-end">
                 <div className="relative w-full max-w-md mx-auto lg:mx-0">
                   <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 rounded-3xl blur-2xl" />
@@ -315,7 +340,7 @@ export default function LandingPage() {
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-white">
-                              Today's diary
+                              Today&apos;s diary
                             </p>
                             <p className="text-xs text-white/40">
                               Krown Braids · London
@@ -357,9 +382,9 @@ export default function LandingPage() {
                       <div className="mt-6 pt-6 border-t border-white/5">
                         <div className="flex items-center justify-between mb-3">
                           <p className="text-xs font-semibold text-white/80 tracking-wide uppercase">
-                            Low stock
+                            Supplier order
                           </p>
-                          <span className="text-[10px] text-cyan-400">Reorder</span>
+                          <span className="text-[10px] text-cyan-400">View</span>
                         </div>
                         <div className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-400/20">
                           <div className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
@@ -370,7 +395,7 @@ export default function LandingPage() {
                               X-Pression braiding hair
                             </p>
                             <p className="text-xs text-white/40">
-                              4 left · from Beauty Depot UK
+                              Arriving tomorrow · Beauty Depot UK
                             </p>
                           </div>
                           <BanknotesIcon className="w-4 h-4 text-cyan-400" />
@@ -388,36 +413,43 @@ export default function LandingPage() {
         <section className="py-10 md:py-12 px-4 border-y border-white/5 bg-white/[0.02] backdrop-blur-sm">
           <div className="max-w-7xl mx-auto">
             <p className="text-center text-[11px] text-white/30 mb-6 tracking-[0.2em] uppercase">
-              Salons registered with us in
+              Everything in one place
             </p>
-            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-14 opacity-60">
-              {["London", "Manchester", "Birmingham", "Leeds", "Glasgow", "Bristol"].map(
-                (city, i) => (
-                  <span
-                    key={i}
-                    className="text-sm md:text-base font-semibold text-white/50 tracking-wide"
-                  >
-                    {city}
-                  </span>
-                )
-              )}
+            <div className="flex flex-wrap justify-center items-center gap-x-10 gap-y-4 opacity-70">
+              {[
+                "Online bookings",
+                "Client records",
+                "Supplier marketplace",
+                "Service catalogue",
+                "GDPR compliant",
+              ].map((item, i) => (
+                <span
+                  key={i}
+                  className="text-sm md:text-base font-semibold text-white/50 tracking-wide"
+                >
+                  {item}
+                </span>
+              ))}
             </div>
           </div>
         </section>
 
         {/* ============================= PLATFORM (3 pillars) ============================= */}
-        <section id="platform" className="py-20 md:py-28 px-4">
+        <section
+          id="platform"
+          className="scroll-mt-24 py-20 md:py-28 px-4"
+        >
           <div className="max-w-7xl mx-auto">
             <div className="max-w-3xl mb-14 md:mb-20">
               <p className="text-xs font-semibold tracking-[0.2em] text-cyan-400 uppercase mb-3">
                 The platform
               </p>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight">
-                One login. Three things every salon actually needs.
+              <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-[-0.025em]">
+                Three things every salon actually needs.
               </h2>
               <p className="mt-4 text-base text-white/50 max-w-2xl">
                 No bloated feature list. Just the tools that save you hours
-                each week and keep your business growing.
+                each week and keep your business running smoothly.
               </p>
             </div>
 
@@ -458,20 +490,23 @@ export default function LandingPage() {
         </section>
 
         {/* ============================= MARKETPLACE ============================= */}
-        <section id="marketplace" className="py-20 md:py-28 px-4">
+        <section
+          id="marketplace"
+          className="scroll-mt-24 py-20 md:py-28 px-4"
+        >
           <div className="max-w-7xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
                 <p className="text-xs font-semibold tracking-[0.2em] text-cyan-400 uppercase mb-3">
                   Supplier marketplace
                 </p>
-                <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight">
+                <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-[-0.025em]">
                   Order supplies without leaving your dashboard.
                 </h2>
                 <p className="mt-4 text-base text-white/55 max-w-lg">
-                  Browse UK wholesalers, compare trade prices, and reorder
-                  your regular stock in a couple of clicks. Invoices land in
-                  the same place as your bookings.
+                  Browse vetted UK wholesalers, compare trade prices, and
+                  reorder your regular stock in a couple of clicks. Invoices
+                  land in the same place as your bookings.
                 </p>
 
                 <div className="mt-8 space-y-4">
@@ -513,7 +548,7 @@ export default function LandingPage() {
                       Wholesale suppliers
                     </p>
                     <span className="text-[10px] text-white/40">
-                      12 available
+                      Verified UK
                     </span>
                   </div>
 
@@ -558,7 +593,7 @@ export default function LandingPage() {
               <p className="text-xs font-semibold tracking-[0.2em] text-cyan-400 uppercase mb-3">
                 Built into every account
               </p>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight">
+              <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-[-0.025em]">
                 Small details that add up.
               </h2>
             </div>
@@ -589,7 +624,10 @@ export default function LandingPage() {
         </section>
 
         {/* ============================= PRICING ============================= */}
-        <section id="pricing" className="py-20 md:py-28 px-4">
+        <section
+          id="pricing"
+          className="scroll-mt-24 py-20 md:py-28 px-4"
+        >
           <div className="max-w-4xl mx-auto">
             <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 shadow-2xl shadow-black/30 overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
@@ -602,16 +640,17 @@ export default function LandingPage() {
                     <p className="text-xs font-semibold tracking-[0.2em] text-cyan-400 uppercase mb-3">
                       Pricing
                     </p>
-                    <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                      A simple monthly subscription.
+                    <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-[-0.025em]">
+                      Start free. Upgrade when you&apos;re ready.
                     </h2>
                     <p className="mt-4 text-sm md:text-base text-white/55">
-                      One flat fee per salon. No commission on your bookings.
-                      No hidden charges. Cancel whenever you like.
+                      Every salon starts with a 60-day free trial. No card
+                      required. Upgrade to a paid plan whenever you&apos;re
+                      ready to grow.
                     </p>
                     <div className="mt-8 flex flex-col sm:flex-row gap-4">
                       <GradientButton href="/signup">
-                        Start your subscription
+                        Start Free Trial
                         <ArrowRightIcon className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                       </GradientButton>
                       <GradientButton href="/contact" variant="outline">
@@ -621,20 +660,23 @@ export default function LandingPage() {
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-                    <p className="text-xs text-white/40 mb-1">From</p>
+                    <p className="text-xs text-white/40 mb-1">Plans from</p>
                     <p className="text-4xl font-bold text-white">
-                      £29<span className="text-base font-medium text-white/40">/month</span>
+                      Free
+                      <span className="text-base font-medium text-white/40">
+                        {" "}for 60 days
+                      </span>
                     </p>
                     <p className="text-xs text-white/40 mt-2">
-                      Billed monthly. Cancel anytime.
+                      Then from £19.99/month. Cancel anytime.
                     </p>
                     <ul className="mt-6 space-y-2.5">
                       {[
-                        "Unlimited bookings",
+                        "Online bookings & calendar",
                         "Client records & notes",
-                        "Staff & rota management",
+                        "Revenue analytics",
                         "Supplier marketplace access",
-                        "UK-based support",
+                        "Priority support",
                       ].map((item, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-white/60">
                           <CheckBadgeIcon className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
@@ -650,7 +692,10 @@ export default function LandingPage() {
         </section>
 
         {/* ============================= CONTACT / CTA ============================= */}
-        <section id="contact" className="py-20 md:py-28 px-4">
+        <section
+          id="contact"
+          className="scroll-mt-24 py-20 md:py-28 px-4"
+        >
           <div className="max-w-4xl mx-auto">
             <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 shadow-2xl shadow-black/30 overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
@@ -660,12 +705,12 @@ export default function LandingPage() {
                   <ShieldCheckIcon className="w-7 h-7 text-cyan-400" />
                 </div>
 
-                <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight">
+                <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-[-0.025em]">
                   Ready to run your salon properly?
                 </h2>
                 <p className="mt-4 text-base md:text-lg text-white/55 max-w-2xl mx-auto">
-                  Set up your account in under five minutes. Pick a plan,
-                  take bookings today, cancel whenever you like.
+                  Set up your account in under five minutes. 60 days free,
+                  no card required. Cancel anytime.
                 </p>
 
                 <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
@@ -679,7 +724,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-white/40">
-                  <span>Subscription-based</span>
+                  <span>60-day free trial</span>
                   <span className="w-1 h-1 rounded-full bg-white/20" />
                   <span>UK GDPR compliant</span>
                   <span className="w-1 h-1 rounded-full bg-white/20" />
@@ -698,46 +743,92 @@ export default function LandingPage() {
             <div className="col-span-2 md:col-span-1">
               <Logo />
               <p className="mt-4 text-white/40 text-sm max-w-xs">
-                The operating system for UK beauty salons — bookings,
-                clients, and suppliers in one place.
+                The operating system for UK braiding and beauty salons —
+                bookings, clients, and suppliers in one place.
               </p>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4 text-sm text-white">Platform</h4>
               <ul className="space-y-2 text-white/40 text-sm">
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Bookings</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Client CRM</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Staff & rota</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Reporting</li>
+                <li>
+                  <a href="#platform" className="hover:text-cyan-400 transition-colors">
+                    Bookings
+                  </a>
+                </li>
+                <li>
+                  <a href="#platform" className="hover:text-cyan-400 transition-colors">
+                    Client CRM
+                  </a>
+                </li>
+                <li>
+                  <a href="#platform" className="hover:text-cyan-400 transition-colors">
+                    Services
+                  </a>
+                </li>
+                <li>
+                  <a href="#platform" className="hover:text-cyan-400 transition-colors">
+                    Reporting
+                  </a>
+                </li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4 text-sm text-white">Marketplace</h4>
               <ul className="space-y-2 text-white/40 text-sm">
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Browse suppliers</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Trade pricing</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Become a supplier</li>
+                <li>
+                  <a href="#marketplace" className="hover:text-cyan-400 transition-colors">
+                    Browse suppliers
+                  </a>
+                </li>
+                <li>
+                  <a href="#marketplace" className="hover:text-cyan-400 transition-colors">
+                    Trade pricing
+                  </a>
+                </li>
+                <li>
+                  <a href="#contact" className="hover:text-cyan-400 transition-colors">
+                    Become a supplier
+                  </a>
+                </li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4 text-sm text-white">Company</h4>
               <ul className="space-y-2 text-white/40 text-sm">
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">About</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Blog</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Contact</li>
+                <li>
+                  <a href="#contact" className="hover:text-cyan-400 transition-colors">
+                    About
+                  </a>
+                </li>
+                <li>
+                  <a href="#contact" className="hover:text-cyan-400 transition-colors">
+                    Contact
+                  </a>
+                </li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4 text-sm text-white">Legal</h4>
               <ul className="space-y-2 text-white/40 text-sm">
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Terms</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Privacy</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">Cookies</li>
-                <li className="hover:text-cyan-400 transition-colors cursor-pointer">GDPR</li>
+                <li>
+                  <a href="/terms" className="hover:text-cyan-400 transition-colors">
+                    Terms
+                  </a>
+                </li>
+                <li>
+                  <a href="/privacy" className="hover:text-cyan-400 transition-colors">
+                    Privacy
+                  </a>
+                </li>
+                <li>
+                  <a href="/cookies" className="hover:text-cyan-400 transition-colors">
+                    Cookies
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
@@ -746,9 +837,7 @@ export default function LandingPage() {
             <p className="text-white/30 text-xs">
               © {new Date().getFullYear()} KrownBraids. All rights reserved.
             </p>
-            <p className="text-white/30 text-xs">
-              Made in the UK 🇬🇧
-            </p>
+            <p className="text-white/30 text-xs">Made in the UK 🇬🇧</p>
           </div>
         </div>
       </footer>
@@ -768,8 +857,8 @@ const pillars = [
       "Clients book themselves in, you approve what suits you. Reminders and rescheduling all handled.",
     points: [
       "Online booking that fits your rota",
-      "SMS + email reminders that cut no-shows",
-      "Manage one or multiple stylists",
+      "Reminders that cut no-shows",
+      "Colour-coded by service",
     ],
   },
   {
@@ -809,13 +898,13 @@ const marketplaceFeatures = [
     icon: BanknotesIcon,
     title: "Trade prices, not retail",
     description:
-      "Wholesale pricing unlocked for registered salons — no minimum orders.",
+      "Wholesale pricing unlocked for approved salons — no minimum orders.",
   },
   {
     icon: TruckIcon,
     title: "Track orders in the app",
     description:
-      "Delivery updates and invoices appear next to your bookings.",
+      "Delivery updates and invoices appear alongside your bookings.",
   },
   {
     icon: LockClosedIcon,
@@ -836,43 +925,44 @@ const features = [
   {
     icon: CalendarDaysIcon,
     title: "Smart diary",
-    description: "Day, week and stylist views. Drag to reschedule, colour-code by service.",
+    description:
+      "Day and week views. Colour-coded by service so your day is easy to read at a glance.",
   },
   {
     icon: CreditCardIcon,
-    title: "Secure client payments",
+    title: "Client records",
     description:
-      "Clients pay through the platform. Funds are held and released to you once the service is complete.",
+      "Notes, contact details, and booking history — searchable in seconds.",
   },
   {
     icon: ChartBarIcon,
     title: "Reports that matter",
-    description: "Revenue, retention, best-selling services — export to CSV or PDF.",
+    description:
+      "Revenue, retention, best-selling services — export to CSV whenever you need.",
   },
   {
     icon: PhoneIcon,
-    title: "Automatic reminders",
-    description: "SMS and email confirmations sent at 48h and 2h before each appointment.",
-  },
-  {
-    icon: TrophyIcon,
-    title: "Staff & rota",
-    description: "Manage stylist rotas, holidays and time off from one dashboard.",
+    title: "Client reminders",
+    description:
+      "Email confirmations sent automatically before each appointment.",
   },
   {
     icon: Squares2X2Icon,
-    title: "Multi-location ready",
-    description: "Manage several sites from one login. Each with its own diary and staff.",
+    title: "Service catalogue",
+    description:
+      "List your services with pricing and duration — clients book themselves in.",
   },
   {
     icon: ShoppingBagIcon,
     title: "Supplier orders",
-    description: "Buy hair, products and tools from the built-in UK marketplace.",
+    description:
+      "Buy hair, products and tools from the built-in UK marketplace.",
   },
   {
     icon: ShieldCheckIcon,
     title: "UK GDPR compliant",
-    description: "Client data hosted in the UK. Full export on request. No lock-in.",
+    description:
+      "Client data hosted in the UK. Full export on request. No lock-in.",
   },
   {
     icon: GlobeAltIcon,

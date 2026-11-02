@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://5783-82-36-98-104.ngrok-free.app";
+  process.env.SUPPLIER_SERVICE_URL ||
+  "https://7257-82-36-98-104.ngrok-free.app/supservice";
 
 export async function GET(
   request: NextRequest,
@@ -10,37 +11,66 @@ export async function GET(
 ) {
   try {
     const { path } = await context.params;
-    const filePath = path.join("/");
-    const url = `${BACKEND_URL}/uploads/${filePath}`;
+    const joined = path.join("/");
 
-    console.log("Proxying image:", url);
+    // Build the list of candidate URLs the backend might serve from.
+    // The supplier service saves to `uploads/products/{supplierId}/{file}`
+    // and its resource handler may be mapped either way:
+    //   /api/v1/auth/images/suppliers/products/{supplierId}/{file}   (with prefix)
+    //   /api/v1/auth/images/suppliers/{supplierId}/{file}             (without)
+    const candidates: string[] = [];
 
-    const backendResponse = await fetch(url, {
-      method: "GET",
-      headers: {
-        "ngrok-skip-browser-warning": "true",
-      },
-      cache: "no-store",
-    });
-
-    if (!backendResponse.ok) {
-      console.error("Image fetch failed:", backendResponse.status, url);
-      return new NextResponse(null, { status: backendResponse.status });
+    if (joined.startsWith("products/")) {
+      // path = ["products", supplierId, file]
+      candidates.push(
+        `${BACKEND_URL}/api/v1/auth/images/suppliers/${joined}`
+      );
+    } else {
+      // path = [supplierId, file]
+      candidates.push(
+        `${BACKEND_URL}/api/v1/auth/images/suppliers/products/${joined}`,
+        `${BACKEND_URL}/api/v1/auth/images/suppliers/${joined}`
+      );
     }
 
-    const contentType =
-      backendResponse.headers.get("content-type") || "application/octet-stream";
-    const buffer = await backendResponse.arrayBuffer();
+    for (const url of candidates) {
+      console.log("[img] trying:", url);
 
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=3600, immutable",
-      },
-    });
+      const backendResponse = await fetch(url, {
+        headers: {
+          "ngrok-skip-browser-warning": "true",
+          "User-Agent": "krownbraids-server/1.0",
+          Accept: "image/*,*/*",
+        },
+        cache: "no-store",
+      });
+
+      console.log("[img] upstream status:", backendResponse.status, url);
+
+      if (!backendResponse.ok) {
+        console.warn("[img] miss:", backendResponse.status, url);
+        continue;
+      }
+
+      const contentType =
+        backendResponse.headers.get("content-type") || "image/jpeg";
+      const buffer = await backendResponse.arrayBuffer();
+
+      console.log("[img] ✅ hit:", url, `(${buffer.byteLength} bytes)`);
+
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=3600, immutable",
+        },
+      });
+    }
+
+    console.error("[img] all candidates failed for path:", joined);
+    return new NextResponse(null, { status: 404 });
   } catch (error) {
-    console.error("Image proxy error:", error);
+    console.error("[img] proxy error:", error);
     return new NextResponse(null, { status: 500 });
   }
 }

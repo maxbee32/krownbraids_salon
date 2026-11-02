@@ -11,10 +11,23 @@ import {
   CreditCardIcon,
   CogIcon,
   XMarkIcon,
-  SparklesIcon,
+  ScissorsIcon,
   ArrowRightOnRectangleIcon,
   LifebuoyIcon,
+  ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
+import {
+  HomeIcon as HomeSolid,
+  CalendarIcon as CalendarSolid,
+  UserGroupIcon as UserGroupSolid,
+  ChartBarIcon as ChartBarSolid,
+  ShoppingBagIcon as ShoppingBagSolid,
+  CreditCardIcon as CreditCardSolid,
+  CogIcon as CogSolid,
+  ScissorsIcon as ScissorsSolid,
+  LifebuoyIcon as LifebuoySolid,
+  ClipboardDocumentListIcon as ClipboardDocumentListSolid,
+} from "@heroicons/react/24/solid";
 import { Logo } from "../ui/Logo";
 
 export interface SidebarSalon {
@@ -22,7 +35,8 @@ export interface SidebarSalon {
   name: string;
   city?: string;
   address?: string;
-  selectedPlanId: number;
+  selectedPlanId: number | null;
+  planName?: string | null;
   subscriptionStartDate?: string | null;
   subscriptionEndDate?: string | null;
 }
@@ -35,22 +49,12 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const planNameFromId = (id: number) =>
-  id === 1 ? "Starter" : id === 2 ? "Professional" : id === 3 ? "Business" : "Starter";
-
-/**
- * Compute days remaining on the salon's subscription.
- * Returns 0 when there's no subscription or it's already expired.
- */
 const getDaysRemaining = (salon: SidebarSalon | null): number => {
   if (!salon?.subscriptionEndDate) return 0;
-
   const end = new Date(salon.subscriptionEndDate).getTime();
   if (isNaN(end)) return 0;
-
   const diffMs = end - Date.now();
   if (diffMs <= 0) return 0;
-
   return Math.max(0, Math.ceil(diffMs / 86_400_000));
 };
 
@@ -59,15 +63,69 @@ const PENDING_STATUSES = ["PENDING_APPROVAL", "PENDING", "REVIEW"];
 const REJECTED_STATUSES = ["REJECTED", "DECLINED"];
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Overview", icon: HomeIcon, exact: true },
-  { href: "/dashboard/bookings", label: "Bookings", icon: CalendarIcon },
-  { href: "/dashboard/services", label: "Services", icon: SparklesIcon },
-  { href: "/dashboard/clients", label: "Clients", icon: UserGroupIcon },
-  { href: "/dashboard/revenue", label: "Revenue", icon: ChartBarIcon },
-  { href: "/dashboard/marketplace", label: "Marketplace", icon: ShoppingBagIcon },
-  { href: "/dashboard/subscription", label: "Subscription", icon: CreditCardIcon },
-  { href: "/dashboard/settings", label: "Settings", icon: CogIcon },
-  { href: "/dashboard/support", label: "Support", icon: LifebuoyIcon },
+  {
+    href: "/dashboard",
+    label: "Overview",
+    icon: HomeIcon,
+    activeIcon: HomeSolid,
+    exact: true,
+  },
+  {
+    href: "/dashboard/bookings",
+    label: "Bookings",
+    icon: CalendarIcon,
+    activeIcon: CalendarSolid,
+  },
+  {
+    href: "/dashboard/services",
+    label: "Services",
+    icon: ScissorsIcon,
+    activeIcon: ScissorsSolid,
+  },
+  {
+    href: "/dashboard/clients",
+    label: "Clients",
+    icon: UserGroupIcon,
+    activeIcon: UserGroupSolid,
+  },
+  {
+    href: "/dashboard/revenue",
+    label: "Revenue",
+    icon: ChartBarIcon,
+    activeIcon: ChartBarSolid,
+  },
+  {
+    href: "/dashboard/marketplace",
+    label: "Marketplace",
+    icon: ShoppingBagIcon,
+    activeIcon: ShoppingBagSolid,
+    // Match only the marketplace root, NOT /marketplace/orders
+    exact: true,
+  },
+  {
+    href: "/dashboard/marketplace/orders",
+    label: "Orders",
+    icon: ClipboardDocumentListIcon,
+    activeIcon: ClipboardDocumentListSolid,
+  },
+  {
+    href: "/dashboard/subscription",
+    label: "Subscription",
+    icon: CreditCardIcon,
+    activeIcon: CreditCardSolid,
+  },
+  {
+    href: "/dashboard/settings",
+    label: "Settings",
+    icon: CogIcon,
+    activeIcon: CogSolid,
+  },
+  {
+    href: "/dashboard/support",
+    label: "Support",
+    icon: LifebuoyIcon,
+    activeIcon: LifebuoySolid,
+  },
 ];
 
 const ALWAYS_ALLOWED_PENDING = [
@@ -84,17 +142,13 @@ const ALWAYS_ALLOWED_REJECTED = [
 
 const isNavItemVisible = (href: string, status?: string): boolean => {
   if (!status) return true;
-
   if (ACTIVE_STATUSES.includes(status)) return true;
-
   if (PENDING_STATUSES.includes(status)) {
     return ALWAYS_ALLOWED_PENDING.includes(href);
   }
-
   if (REJECTED_STATUSES.includes(status)) {
     return ALWAYS_ALLOWED_REJECTED.includes(href);
   }
-
   return false;
 };
 
@@ -102,13 +156,22 @@ export function Sidebar({ salon, status, onLogout, open, onClose }: SidebarProps
   const router = useRouter();
   const pathname = usePathname();
   const daysRemaining = getDaysRemaining(salon);
-  const planName = planNameFromId(salon?.selectedPlanId || 1);
+
+  const planName =
+    salon?.planName?.trim() ||
+    (salon?.selectedPlanId ? "Active Plan" : "Trial");
 
   const hasSubscription = Boolean(salon?.subscriptionEndDate);
   const isExpiringSoon = daysRemaining > 0 && daysRemaining <= 7;
 
-  const isActive = (href: string, exact?: boolean) =>
-    exact ? pathname === href : pathname.startsWith(href);
+  const isActive = (href: string, exact?: boolean) => {
+    if (exact) return pathname === href;
+    // Non-exact: match the href and any descendant, but never match a
+    // sibling longer path that also starts with this prefix. E.g.
+    // "/dashboard/marketplace" should not highlight when on "/dashboard/marketplace/orders".
+    if (pathname === href) return true;
+    return pathname.startsWith(href + "/");
+  };
 
   const visibleNavItems = NAV_ITEMS.filter((item) =>
     isNavItemVisible(item.href, status)
@@ -167,8 +230,11 @@ export function Sidebar({ salon, status, onLogout, open, onClose }: SidebarProps
         {!isRestricted && (
           <div className="mx-4 mt-3 p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-purple-500/10 border border-cyan-400/20">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] uppercase tracking-wider text-cyan-300 font-semibold">
+              <span className="text-[11px] uppercase tracking-wider text-cyan-300 font-semibold flex items-center gap-1.5">
                 {planName}
+                {planName.toLowerCase() === "trial" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                )}
               </span>
               {!hasSubscription ? (
                 <span className="text-[10px] text-white/40 font-medium">
@@ -214,7 +280,11 @@ export function Sidebar({ salon, status, onLogout, open, onClose }: SidebarProps
               onClick={() => router.push("/dashboard/subscription")}
               className="mt-3 w-full text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg transition-all"
             >
-              {hasSubscription ? "Manage subscription" : "Choose a plan"}
+              {!hasSubscription
+                ? "Choose a plan"
+                : planName.toLowerCase() === "trial"
+                ? "Upgrade plan"
+                : "Manage subscription"}
             </button>
           </div>
         )}
@@ -226,8 +296,8 @@ export function Sidebar({ salon, status, onLogout, open, onClose }: SidebarProps
           </p>
           <ul className="space-y-0.5">
             {visibleNavItems.map((item) => {
-              const Icon = item.icon;
               const active = isActive(item.href, item.exact);
+              const Icon = active ? item.activeIcon : item.icon;
               return (
                 <li key={item.href}>
                   <Link
@@ -240,13 +310,15 @@ export function Sidebar({ salon, status, onLogout, open, onClose }: SidebarProps
                     }`}
                   >
                     <Icon
-                      className={`w-[18px] h-[18px] transition-colors ${
+                      className={`w-[18px] h-[18px] transition-colors flex-shrink-0 ${
                         active
                           ? "text-cyan-400"
                           : "text-white/40 group-hover:text-cyan-400"
                       }`}
                     />
-                    <span>{item.label}</span>
+                    <span className={active ? "font-medium" : ""}>
+                      {item.label}
+                    </span>
                   </Link>
                 </li>
               );

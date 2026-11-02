@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://58bb-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
+  "https://7257-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
 
 // =====================================================
 // GET ALL SERVICES FOR A SALON
@@ -13,20 +13,17 @@ export async function GET(request: NextRequest) {
   try {
     console.log("=== Get Services API Route ===");
     console.log("Full URL:", request.url);
-    
-    // ✅ Try multiple ways to get the token
+
     let authHeader = request.headers.get("authorization");
     console.log("Auth header from 'authorization':", authHeader ? "Present" : "Missing");
-    
-    // If not found, try with capital 'A'
+
     if (!authHeader) {
       authHeader = request.headers.get("Authorization");
       console.log("Auth header from 'Authorization':", authHeader ? "Present" : "Missing");
     }
-    
-    // Log all headers for debugging
+
     console.log("All headers:", Object.fromEntries(request.headers));
-    
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       console.log("❌ No valid auth header found");
       return NextResponse.json(
@@ -37,11 +34,10 @@ export async function GET(request: NextRequest) {
 
     const token = authHeader.substring(7);
     console.log("Token extracted:", token.substring(0, 30) + "...");
-    
-    // ✅ Get salonId from query params
+
     const { searchParams } = new URL(request.url);
     const salonId = searchParams.get("salonId");
-    
+
     console.log("Salon ID from query:", salonId);
 
     if (!salonId) {
@@ -52,11 +48,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ✅ Call the backend with the salonId and Authorization header
     const backendUrl = `${BACKEND_URL}/salon/${salonId}`;
     console.log("Calling backend:", backendUrl);
 
-    // ✅ Try with different header formats
     const backendResponse = await fetch(backendUrl, {
       method: "GET",
       headers: {
@@ -67,7 +61,7 @@ export async function GET(request: NextRequest) {
     });
 
     console.log("Backend status:", backendResponse.status);
-    
+
     const rawResponse = await backendResponse.text();
     console.log("Raw backend response:", rawResponse);
 
@@ -80,15 +74,14 @@ export async function GET(request: NextRequest) {
 
     if (!backendResponse.ok) {
       console.log("❌ Backend returned error:", backendResponse.status);
-      
-      // If token is invalid, try to refresh or redirect to login
+
       if (backendResponse.status === 401 || backendResponse.status === 403) {
         return NextResponse.json(
           { message: "Session expired. Please login again." },
           { status: 401 }
         );
       }
-      
+
       return NextResponse.json(
         { message: data.message || "Failed to fetch services" },
         { status: backendResponse.status }
@@ -97,9 +90,83 @@ export async function GET(request: NextRequest) {
 
     console.log("✅ Services fetched successfully");
     return NextResponse.json(data, { status: backendResponse.status });
-    
+
   } catch (error) {
     console.error("Get services API error:", error);
+    return NextResponse.json(
+      { message: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+// =====================================================
+// CREATE A SERVICE (no images)
+// POST /api/auth/services?salonId={salonId}
+// =====================================================
+
+export async function POST(request: NextRequest) {
+  try {
+    console.log("=== Create Service API Route (No Images) ===");
+    console.log("Full URL:", request.url);
+
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { message: "Unauthorized: No token provided" },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7);
+
+    const { searchParams } = new URL(request.url);
+    const salonId = searchParams.get("salonId");
+
+    if (!salonId) {
+      return NextResponse.json(
+        { message: "Salon ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.text();
+    console.log("Service payload:", body);
+
+    const backendUrl = `${BACKEND_URL}/salon/${salonId}`;
+    console.log("Calling backend:", backendUrl);
+
+    const backendResponse = await fetch(backendUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body,
+    });
+
+    const rawResponse = await backendResponse.text();
+    console.log("Backend status:", backendResponse.status);
+    console.log("Raw backend response:", rawResponse);
+
+    let data;
+    try {
+      data = JSON.parse(rawResponse);
+    } catch {
+      data = rawResponse || "Failed to create service";
+    }
+
+    if (!backendResponse.ok) {
+      return NextResponse.json(
+        { message: (data && data.message) || "Failed to create service" },
+        { status: backendResponse.status }
+      );
+    }
+
+    return NextResponse.json(data, { status: backendResponse.status });
+  } catch (error) {
+    console.error("Create service API error:", error);
     return NextResponse.json(
       { message: "Internal server error" },
       { status: 500 }

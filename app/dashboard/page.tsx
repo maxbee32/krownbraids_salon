@@ -5,19 +5,20 @@ import { useRouter } from "next/navigation";
 import {
   CheckCircleIcon,
   ClockIcon,
-  XCircleIcon,
-  CalendarIcon,
-  UserGroupIcon,
-  ScissorsIcon,
-  ArrowRightIcon,
-  ShieldCheckIcon,
-  BuildingOfficeIcon,
-  BanknotesIcon,
   ExclamationTriangleIcon,
-  Squares2X2Icon
+  Squares2X2Icon,
+  ArrowRightIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
+  BuildingOfficeIcon,
 } from "@heroicons/react/24/outline";
-import { useServiceContext } from '@/app/context/ServiceContext';
-import { StatCard } from "../components/dashboard/StatCard";
+import {
+  CalendarDaysIcon as CalendarSolid,
+  UserGroupIcon as UsersSolid,
+  BanknotesIcon as BanknotesSolid,
+  Squares2X2Icon as SquaresSolid,
+} from "@heroicons/react/24/solid";
+import { useServiceContext } from "@/app/context/ServiceContext";
 
 interface SalonData {
   id: number;
@@ -26,15 +27,59 @@ interface SalonData {
   city: string;
   status: string;
   onboardingStep: string;
-  selectedPlanId: number;
+  selectedPlanId: number | null;
   subscriptionStartDate?: string | null;
   subscriptionEndDate?: string | null;
   rejectionReason?: string;
   rejectedAt?: string;
 }
 
-const planNameFromId = (id: number) =>
-  id === 1 ? "Starter" : id === 2 ? "Professional" : id === 3 ? "Business" : "Starter";
+const STAT_DEFS = [
+  {
+    label: "Today's bookings",
+    key: "bookings",
+    icon: CalendarSolid,
+    accent: "from-blue-500/25 to-blue-600/5",
+    border: "border-blue-400/30",
+    text: "text-blue-400",
+    href: "/dashboard/bookings",
+    defaultValue: "0",
+    trend: { value: "+12%", direction: "up" as const },
+  },
+  {
+    label: "Active clients",
+    key: "clients",
+    icon: UsersSolid,
+    accent: "from-emerald-500/25 to-emerald-600/5",
+    border: "border-emerald-400/30",
+    text: "text-emerald-400",
+    href: "/dashboard/clients",
+    defaultValue: "0",
+    trend: { value: "+8%", direction: "up" as const },
+  },
+  {
+    label: "Revenue this month",
+    key: "revenue",
+    icon: BanknotesSolid,
+    accent: "from-purple-500/25 to-purple-600/5",
+    border: "border-purple-400/30",
+    text: "text-purple-400",
+    href: "/dashboard/revenue",
+    defaultValue: "£0",
+    trend: { value: "+23%", direction: "up" as const },
+  },
+  {
+    label: "Services",
+    key: "services",
+    icon: SquaresSolid,
+    accent: "from-cyan-500/25 to-cyan-600/5",
+    border: "border-cyan-400/30",
+    text: "text-cyan-400",
+    href: "/dashboard/services",
+    defaultValue: "0",
+    trend: { value: "Stable", direction: "flat" as const },
+  },
+] as const;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -47,17 +92,18 @@ export default function DashboardPage() {
       try {
         const token = localStorage.getItem("adminToken");
         if (!token) {
-          router.push("/login");
+          router.replace("/login");
           return;
         }
 
-        const onboardingResponse = await fetch("/api/auth/business/salons/onboarding", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const onboardingResponse = await fetch(
+          "/api/auth/business/salons/onboarding",
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
         if (!onboardingResponse.ok) {
           if (onboardingResponse.status === 404) {
-            router.push("/dashboard/setup");
+            router.replace("/setup");
             return;
           }
           setError("Failed to load salon data");
@@ -66,15 +112,22 @@ export default function DashboardPage() {
         }
 
         const onboardingData = await onboardingResponse.json();
-        const salonId = onboardingData.salonId || onboardingData.id;
-        if (!salonId) {
-          router.push("/dashboard/setup");
+
+        if (!onboardingData.completed && onboardingData.step !== "COMPLETED") {
+          router.replace("/setup");
           return;
         }
 
-        const salonResponse = await fetch(`/api/auth/business/salons/${salonId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const salonId = onboardingData.salonId || onboardingData.id;
+        if (!salonId) {
+          router.replace("/setup");
+          return;
+        }
+
+        const salonResponse = await fetch(
+          `/api/auth/business/salons/${salonId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
         if (salonResponse.ok) {
           const data = await salonResponse.json();
@@ -89,7 +142,7 @@ export default function DashboardPage() {
             city: "",
             status: onboardingData.step || "PENDING_APPROVAL",
             onboardingStep: onboardingData.step || "REVIEW",
-            selectedPlanId: onboardingData.selectedPlanId || 1,
+            selectedPlanId: onboardingData.selectedPlanId ?? null,
           });
         }
       } catch (err) {
@@ -101,6 +154,16 @@ export default function DashboardPage() {
     };
     load();
   }, [router]);
+
+  const status = salon?.status || salon?.onboardingStep || "PENDING_APPROVAL";
+  const isRejected = ["REJECTED", "DECLINED"].includes(status);
+  const isPending = ["PENDING_APPROVAL", "PENDING", "REVIEW"].includes(status);
+
+  useEffect(() => {
+    if (!loading && salon && isRejected) {
+      router.replace("/rejected");
+    }
+  }, [loading, salon, isRejected, router]);
 
   if (loading) {
     return (
@@ -133,13 +196,8 @@ export default function DashboardPage() {
   }
 
   if (!salon) return null;
-
-  const status = salon.status || salon.onboardingStep || "PENDING_APPROVAL";
-  const isPending = ["PENDING_APPROVAL", "PENDING", "REVIEW"].includes(status);
-  const isRejected = ["REJECTED", "DECLINED"].includes(status);
-
+  if (isRejected) return null;
   if (isPending) return <PendingView salon={salon} router={router} />;
-  if (isRejected) return <RejectedView salon={salon} router={router} />;
   return <ApprovedView salon={salon} router={router} />;
 }
 
@@ -218,7 +276,7 @@ function PendingView({ salon, router }: { salon: SalonData; router: any }) {
             <li className="flex gap-3 opacity-50">
               <div className="flex flex-col items-center flex-shrink-0">
                 <div className="h-6 w-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
-                  <Squares2X2Icon  className="h-3.5 w-3.5 text-white/40" />
+                  <Squares2X2Icon className="h-3.5 w-3.5 text-white/40" />
                 </div>
               </div>
               <div>
@@ -233,7 +291,7 @@ function PendingView({ salon, router }: { salon: SalonData; router: any }) {
 
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => router.push("/dashboard/setup")}
+            onClick={() => router.push("/setup")}
             className="bg-white/5 hover:bg-white/10 border border-white/10 py-2.5 rounded-xl text-sm font-medium transition-all"
           >
             Review application
@@ -254,54 +312,33 @@ function PendingView({ salon, router }: { salon: SalonData; router: any }) {
 function ApprovedView({ salon, router }: { salon: SalonData; router: any }) {
   const { serviceCount, refreshServiceCount } = useServiceContext();
 
-  const [stats, setStats] = useState([
-  {
-    label: "Today's bookings",
-    value: "0",
-    icon: CalendarIcon,
-    color: "text-blue-400",
-    href: "/dashboard/bookings",
-  },
-  {
-    label: "Active clients",
-    value: "0",
-    icon: UserGroupIcon,
-    color: "text-emerald-400",
-    href: "/dashboard/clients",
-  },
-  {
-    label: "Revenue this month",
-    value: "£0",
-    icon: BanknotesIcon,
-    color: "text-purple-400",
-    href: "/dashboard/revenue",
-  },
-  {
-    label: "Services",
-    value: "0",
-    icon: Squares2X2Icon,
-    color: "text-cyan-400",
-    href: "/dashboard/services",
-  },
-]);
-
   useEffect(() => {
     refreshServiceCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    setStats((prev) =>
-      prev.map((stat) =>
-        stat.label === "Services" ? { ...stat, value: serviceCount.toString() } : stat
-      )
-    );
-  }, [serviceCount]);
-
   const upcoming = [
-    { time: "09:30", client: "Amara O.", service: "Knotless braids", duration: "4h" },
-    { time: "11:00", client: "Priya S.", service: "Cornrows", duration: "2h" },
-    { time: "14:30", client: "Chloe M.", service: "Consultation", duration: "30m" },
+    {
+      time: "09:30",
+      client: "Amara O.",
+      service: "Knotless braids",
+      duration: "4h",
+      bar: "bg-cyan-400",
+    },
+    {
+      time: "11:00",
+      client: "Priya S.",
+      service: "Cornrows",
+      duration: "2h",
+      bar: "bg-purple-400",
+    },
+    {
+      time: "14:30",
+      client: "Chloe M.",
+      service: "Consultation",
+      duration: "30m",
+      bar: "bg-amber-400",
+    },
   ];
 
   const activity = [
@@ -310,31 +347,87 @@ function ApprovedView({ salon, router }: { salon: SalonData; router: any }) {
     { text: "Low stock: X-Pression braiding hair (4 left)", time: "Yesterday" },
   ];
 
+  const getStatValue = (key: string) => {
+    if (key === "services") return serviceCount.toString();
+    return null;
+  };
+
   return (
     <>
       <div className="mb-8">
-  <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-    Welcome back, {salon.name?.split(" ")[0] || "there"}
-  </h1>
-  <p className="text-white/40 text-sm mt-1">
-    Here&apos;s what&apos;s happening across your salon today.
-  </p>
-</div>
+        <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+          Welcome back, {salon.name?.split(" ")[0] || "there"}
+        </h1>
+        <p className="text-white/40 text-sm mt-1">
+          Here&apos;s what&apos;s happening across your salon today.
+        </p>
+      </div>
 
+      {/* ============ STAT CARDS (visibly different) ============ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
-      {stats.map((stat, i) => (
-  <StatCard
-    key={i}
-    label={stat.label}
-    value={stat.value}
-    icon={stat.icon}
-    color={stat.color}
-    href={stat.href}
-  />
-))}
+        {STAT_DEFS.map((stat) => {
+          const Icon = stat.icon;
+          const dynamicValue = getStatValue(stat.key);
+          const value = dynamicValue ?? stat.defaultValue;
+          const trendIsUp = stat.trend.direction === "up";
+          const trendIsDown = stat.trend.direction === "down";
+
+          return (
+            <a
+              key={stat.key}
+              href={stat.href}
+              className="group relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 hover:border-cyan-400/30 hover:bg-white/[0.07] hover:-translate-y-0.5 transition-all duration-300 overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              {/* Icon row */}
+              <div className="flex items-start justify-between mb-5">
+                <div
+                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${stat.accent} ${stat.border} border flex items-center justify-center shadow-lg`}
+                >
+                  <Icon className={`h-6 w-6 ${stat.text}`} />
+                </div>
+                <ArrowRightIcon className="h-4 w-4 text-white/20 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all" />
+              </div>
+
+              {/* BIG value */}
+              <p className="text-3xl md:text-4xl font-extrabold text-white tracking-tighter tabular-nums leading-none">
+                {value}
+              </p>
+
+              {/* Label */}
+              <p className="text-[11px] text-white/50 mt-2 uppercase tracking-wider font-semibold">
+                {stat.label}
+              </p>
+
+              {/* Trend chip */}
+              <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-1.5">
+                {trendIsUp && (
+                  <ArrowTrendingUpIcon className="h-3.5 w-3.5 text-emerald-400" />
+                )}
+                {trendIsDown && (
+                  <ArrowTrendingDownIcon className="h-3.5 w-3.5 text-red-400" />
+                )}
+                <span
+                  className={`text-[11px] font-medium ${
+                    trendIsUp
+                      ? "text-emerald-400"
+                      : trendIsDown
+                      ? "text-red-400"
+                      : "text-white/40"
+                  }`}
+                >
+                  {stat.trend.value}
+                </span>
+                <span className="text-[10px] text-white/30 ml-1">vs last week</span>
+              </div>
+            </a>
+          );
+        })}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
+        {/* ============ SCHEDULE (colored vertical bars) ============ */}
         <div className="lg:col-span-2 relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
           <div className="flex items-center justify-between mb-5">
@@ -357,17 +450,28 @@ function ApprovedView({ salon, router }: { salon: SalonData; router: any }) {
               {upcoming.map((apt, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/5 hover:border-cyan-400/20 transition-colors"
+                  className="group flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/5 hover:border-cyan-400/30 hover:bg-white/[0.07] transition-all"
                 >
-                  <div className="text-[12px] font-mono text-cyan-300 w-12 flex-shrink-0">
+                  {/* Time */}
+                  <div className="text-[13px] font-mono font-semibold text-cyan-300 w-12 flex-shrink-0 tabular-nums">
                     {apt.time}
                   </div>
-                  <div className="w-px h-8 bg-white/10" />
+
+                  {/* Vertical colored bar (instead of dot) */}
+                  <div className={`w-1 h-10 rounded-full ${apt.bar} flex-shrink-0`} />
+
+                  {/* Client + service */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{apt.client}</p>
-                    <p className="text-xs text-white/40 truncate">{apt.service}</p>
+                    <p className="text-sm font-semibold text-white truncate">
+                      {apt.client}
+                    </p>
+                    <p className="text-xs text-white/50 truncate mt-0.5">
+                      {apt.service}
+                    </p>
                   </div>
-                  <span className="text-[11px] text-white/40 flex-shrink-0">
+
+                  {/* Duration pill */}
+                  <span className="text-[11px] font-medium text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-1 rounded-full flex-shrink-0 tabular-nums">
                     {apt.duration}
                   </span>
                 </div>
@@ -376,6 +480,7 @@ function ApprovedView({ salon, router }: { salon: SalonData; router: any }) {
           )}
         </div>
 
+        {/* ============ ACTIVITY ============ */}
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent" />
           <h2 className="text-sm font-semibold text-white mb-5">Recent activity</h2>
@@ -394,53 +499,9 @@ function ApprovedView({ salon, router }: { salon: SalonData; router: any }) {
       </div>
 
       <div className="mt-8 pt-5 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3 text-[11px] text-white/30">
-        <div className="flex items-center gap-4">
-          {/* <span>Salon ID: {salon.id}</span>
-          <span className="w-1 h-1 rounded-full bg-white/20" />
-          <span>Plan: {planNameFromId(salon.selectedPlanId || 1)}</span> */}
-        </div>
+        <div className="flex items-center gap-4" />
         <span>KrownBraids · {new Date().getFullYear()}</span>
       </div>
     </>
-  );
-}
-
-/* ---------- Rejected ---------- */
-function RejectedView({ salon, router }: { salon: SalonData; router: any }) {
-  return (
-    <div className="max-w-md mx-auto">
-      <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 shadow-2xl shadow-black/30 p-8 overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
-        <div className="flex items-center gap-3 mb-5">
-          <div className="h-10 w-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
-            <XCircleIcon className="h-5 w-5 text-red-400" />
-          </div>
-          <div>
-            <h1 className="text-base font-semibold text-white">Application not approved</h1>
-            <p className="text-white/50 text-xs mt-0.5">For {salon.name || "your salon"}</p>
-          </div>
-        </div>
-
-        <p className="text-white/60 text-sm leading-relaxed mb-6">
-          We were unable to approve your application at this time. This is often due to
-          incomplete business information or details that couldn&apos;t be verified.
-        </p>
-
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
-          <p className="text-xs text-white/50 leading-relaxed">
-            If you believe this was a mistake, or you have additional documentation to
-            provide, please contact our support team.
-          </p>
-        </div>
-
-        <button
-          onClick={() => router.push("/dashboard/support")}
-          className="w-full bg-white/5 hover:bg-white/10 border border-white/10 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-        >
-          <ShieldCheckIcon className="h-4 w-4" />
-          Contact support
-        </button>
-      </div>
-    </div>
   );
 }

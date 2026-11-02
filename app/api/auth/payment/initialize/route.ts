@@ -1,62 +1,63 @@
 // app/api/payment/initialize/route.ts
 import { NextResponse } from "next/server";
 
+const PAYMENT_SERVICE_URL =
+  process.env.PAYMENT_SERVICE_URL ||
+  "https://7257-82-36-98-104.ngrok-free.app/pservice";
 
-const BACKEND_URL =
-  "https://58bb-82-36-98-104.ngrok-free.app/pservice/api/v1/auth/payment";
 export async function POST(request: Request) {
   try {
-    console.log("=== Payment Initialize API Route ===");
+    console.log("=== Salon Stripe Session API Route ===");
 
-    // Get authorization token
     const authorization = request.headers.get("authorization");
-    
-    if (!authorization) {
+    if (!authorization || !authorization.startsWith("Bearer ")) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: "Authorization token is required" 
-        },
+        { success: false, message: "Authorization token is required" },
         { status: 401 }
       );
     }
 
-    // Get request body
     const body = await request.json();
-    const { salonId, planId } = body;
+    const { salonId, planId, billingCycle } = body;
 
-    console.log("Payment request:", { salonId, planId });
+    console.log("Stripe session request:", { salonId, planId, billingCycle });
 
-    // Validate required fields
     if (!salonId) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: "Salon ID is required" 
-        },
+        { success: false, message: "Salon ID is required" },
         { status: 400 }
       );
     }
 
     if (!planId) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: "Plan ID is required" 
-        },
+        { success: false, message: "Plan ID is required" },
         { status: 400 }
       );
     }
 
-    // Call Payment Service
-    const response = await fetch(`${BACKEND_URL}/initialize`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": authorization,
-      },
-      body: JSON.stringify({ salonId, planId }),
-    });
+    // Force userType: SALON — this route can only create salon sessions
+    const payload = {
+      userType: "SALON",
+      salonId,
+      planId,
+      billingCycle: billingCycle || "monthly",
+      paymentType: "SUBSCRIPTION",
+    };
+
+    const response = await fetch(
+      `${PAYMENT_SERVICE_URL}/api/v1/auth/stripe/create-embedded-session`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: authorization,
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
 
     const rawResponse = await response.text();
     console.log("Payment service response:", rawResponse);
@@ -72,27 +73,23 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: data.message || "Payment initialization failed",
+          message: data.error || data.message || "Failed to create session",
         },
         { status: response.status }
       );
     }
 
+    // Stripe returns { clientSecret, sessionId } — no redirect URL
     return NextResponse.json({
       success: true,
-      checkoutId: data.checkoutId,
-      redirectUrl: data.redirectUrl,
-      message: data.message || "Payment initialized successfully",
+      clientSecret: data.clientSecret,
+      sessionId: data.sessionId,
+      message: "Payment session created",
     });
-
   } catch (error) {
-    console.error("Payment initialize API error:", error);
-    
+    console.error("Stripe session API error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Internal server error",
-      },
+      { success: false, message: "Internal server error" },
       { status: 500 }
     );
   }

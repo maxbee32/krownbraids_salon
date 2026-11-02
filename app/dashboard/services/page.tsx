@@ -22,6 +22,7 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowPathIcon,
   PhotoIcon,
+  BoltIcon,
 } from "@heroicons/react/24/outline";
 
 /* ------------------------------------------------------------------ */
@@ -74,6 +75,8 @@ interface SalonData {
   id: number;
   name: string;
   email: string;
+  maxServices?: number | null;
+  maxBookingsPerMonth?: number | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,6 +104,8 @@ export default function ServicesPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [imagePreview, setImagePreview] = useState<string[]>([]);
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState<string | null>(null);
+  const [removedImageUrls, setRemovedImageUrls] = useState<string[]>([]);
 
   const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
@@ -117,30 +122,63 @@ export default function ServicesPage() {
     images: [],
   });
 
-  /* ---------- Helpers ---------- */
 
-  const fetchImageWithHeader = async (url: string): Promise<string> => {
-    try {
-      if (!url.includes('ngrok-free.app')) return url;
-      const response = await fetch(url, {
-        headers: { 'ngrok-skip-browser-warning': 'true' },
-      });
-      if (!response.ok) return url;
-      const blob = await response.blob();
-      return URL.createObjectURL(blob);
-    } catch {
-      return url;
+  
+  /* ---------- Image URL Helper ---------- */
+
+  const rewriteImageUrl = (
+    url: string,
+    salonId?: string | number | null
+  ): string => {
+    if (!url) return url;
+
+    // Already proxied
+    if (url.startsWith("/api/uploads/")) return url;
+
+    // Relative path from backend ("/1/uuid.jpg")
+    if (url.startsWith("/") && !url.startsWith("//")) {
+      return `/api/uploads/salon${url}`;
     }
+
+    // Full backend path: .../api/v1/auth/business/salons/images/{id}/{file}
+    const salonMatch = url.match(
+      /\/api\/v1\/auth\/business\/salons\/images\/(.+)$/
+    );
+    if (salonMatch) return `/api/uploads/salon/${salonMatch[1]}`;
+
+    // Legacy service image paths
+    const serviceMatch = url.match(
+      /\/api\/v1\/auth\/(?:images\/services|services\/images)\/(.+)$/
+    );
+    if (serviceMatch) return `/api/uploads/salon/${serviceMatch[1]}`;
+
+    // Any .../uploads/... or .../services/... tail
+    const uploadsMatch = url.match(/\/uploads\/(?:services\/)?(.+)$/);
+    if (uploadsMatch) return `/api/uploads/salon/${uploadsMatch[1]}`;
+
+    // Bare filename ("f91f4284-...png") — needs salonId to build a path
+    if (
+      /^[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp|gif|avif|svg)$/i.test(url) &&
+      salonId
+    ) {
+      return `/api/uploads/salon/${salonId}/${url}`;
+    }
+
+    // Unknown — leave as-is
+    return url;
   };
 
-  const loadServiceImages = async (service: Service): Promise<Service> => {
-    if (service.serviceImages && service.serviceImages.length > 0) {
-      const loaded = await Promise.all(
-        service.serviceImages.map(fetchImageWithHeader)
-      );
-      return { ...service, serviceImages: loaded };
-    }
-    return service;
+  const loadServiceImages = (
+    service: Service,
+    salonId?: string | number | null
+  ): Service => {
+    if (!service.serviceImages?.length) return service;
+    return {
+      ...service,
+      serviceImages: service.serviceImages.map((url) =>
+        rewriteImageUrl(url, salonId)
+      ),
+    };
   };
 
   useEffect(() => {
@@ -159,8 +197,10 @@ export default function ServicesPage() {
     const handler = () => {
       setShowModal(false);
       setShowDeleteConfirm(null);
+      setShowUpgradePrompt(null);
       setSuccessMessage(null);
       setError(null);
+      setRemovedImageUrls([]);
     };
     window.addEventListener("session-expiring", handler);
     return () => window.removeEventListener("session-expiring", handler);
@@ -263,7 +303,11 @@ export default function ServicesPage() {
       if (servicesResponse.ok) {
         const servicesData = await servicesResponse.json();
         const list = Array.isArray(servicesData) ? servicesData : servicesData.data || [];
-        const withImages = await Promise.all(list.map(loadServiceImages));
+
+        // Pass salonId so bare filenames get a path
+        const withImages = list.map((s: Service) =>
+          loadServiceImages(s, salonId)
+        );
         setServices(withImages);
       } else {
         setServices([]);
@@ -279,6 +323,18 @@ export default function ServicesPage() {
   /* ---------- Modal / form ---------- */
 
   const handleOpenModal = (service?: Service) => {
+    setRemovedImageUrls([]);
+    // Pre-check: block adding new services if at limit (not for editing)
+    if (!service) {
+      const max = salon?.maxServices;
+      if (max != null && max > 0 && services.length >= max) {
+        setShowUpgradePrompt(
+          `Your current subscription plan limits you to ${max} services. Please upgrade to add more.`
+        );
+        return;
+      }
+    }
+
     if (service) {
       setEditingService(service);
       setFormData({
@@ -323,6 +379,7 @@ export default function ServicesPage() {
     setEditingService(null);
     setError(null);
     setImagePreview([]);
+    setRemovedImageUrls([]);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -334,10 +391,43 @@ export default function ServicesPage() {
     }
   };
 
-  const removeImage = (index: number) => {
-    setFormData({ ...formData, images: formData.images.filter((_, i) => i !== index) });
-    setImagePreview(imagePreview.filter((_, i) => i !== index));
-  };
+  const reverseProxyUrl = (url: string): string => {
+  if (!url) return url;
+
+  // "/api/uploads/salon/50020/abc.jpg" → "abc.jpg"
+  // "/api/uploads/salon/services/50020/abc.jpg" → "abc.jpg"
+  const m = url.match(
+    /^\/api\/uploads\/salon\/(?:services\/)?(?:[^/]+\/)?([^/]+)$/
+  );
+  if (m) return m[1];
+
+  // Fallback: last path segment
+  const parts = url.split("/");
+  return parts[parts.length - 1] || url;
+};
+
+const removeImage = (index: number) => {
+  const target = imagePreview[index];
+
+  if (target && !target.startsWith("blob:")) {
+    // Existing backend image → record for deletion on submit
+    const originalName = reverseProxyUrl(target);
+    setRemovedImageUrls((prev) => [...prev, originalName]);
+  } else {
+    // Newly added file → remove from pending uploads
+    const blobIndex =
+      imagePreview
+        .slice(0, index + 1)
+        .filter((u) => u.startsWith("blob:")).length - 1;
+
+    setFormData({
+      ...formData,
+      images: formData.images.filter((_, i) => i !== blobIndex),
+    });
+  }
+
+  setImagePreview(imagePreview.filter((_, i) => i !== index));
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -350,58 +440,66 @@ export default function ServicesPage() {
       const salonId = salon?.id;
       if (!salonId) throw new Error('Salon not found');
 
-      const hasImages = formData.images && formData.images.length > 0;
+      const hasNewImages = formData.images && formData.images.length > 0;
+const hasRemovals = removedImageUrls.length > 0;
+const needsMultipart = hasNewImages || hasRemovals;
 
-      const serviceData = {
-        name: formData.name,
-        description: formData.description || '',
-        category: formData.category,
-        amount:
-          typeof formData.amount === 'string' ? parseFloat(formData.amount) : formData.amount,
-        durationMinutes: formData.durationMinutes,
-        isActive: formData.isActive,
-        termsAndConditions: formData.termsAndConditions || '',
-        tags: formData.tags ? formData.tags.split(',').map((t) => t.trim()) : [],
-        availability: formData.availability || 'Available',
-        isFeatured: formData.isFeatured,
-        requiresBooking: formData.requiresBooking,
-        quantity: 1,
-      };
+const serviceData: Record<string, any> = {
+  name: formData.name,
+  description: formData.description || '',
+  category: formData.category,
+  amount:
+    typeof formData.amount === 'string' ? parseFloat(formData.amount) : formData.amount,
+  durationMinutes: formData.durationMinutes,
+  isActive: formData.isActive,
+  termsAndConditions: formData.termsAndConditions || '',
+  tags: formData.tags ? formData.tags.split(',').map((t) => t.trim()) : [],
+  availability: formData.availability || 'Available',
+  isFeatured: formData.isFeatured,
+  requiresBooking: formData.requiresBooking,
+  quantity: 1,
+};
 
-      let url: string;
-      const method = editingService ? 'PUT' : 'POST';
-      if (editingService) {
-        url = hasImages
-          ? `/api/auth/services/${editingService.id}/with-images`
-          : `/api/auth/services/${editingService.id}`;
-      } else {
-        url = hasImages
-          ? `/api/auth/services/with-images?salonId=${salonId}`
-          : `/api/auth/services?salonId=${salonId}`;
-      }
+// Tell backend which images to delete
+if (hasRemovals) {
+  serviceData.removeImages = removedImageUrls;
+}
 
-      let body: any;
-      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+let url: string;
+const method = editingService ? 'PUT' : 'POST';
+if (editingService) {
+  url = needsMultipart
+    ? `/api/auth/services/${editingService.id}/with-images`
+    : `/api/auth/services/${editingService.id}`;
+} else {
+  url = hasNewImages
+    ? `/api/auth/services/with-images?salonId=${salonId}`
+    : `/api/auth/services?salonId=${salonId}`;
+}
 
-      if (hasImages) {
-        const fd = new FormData();
-        fd.append(
-          'service',
-          new Blob([JSON.stringify(serviceData)], { type: 'application/json' }),
-          'service.json'
-        );
-        formData.images.forEach((img) => fd.append('images', img));
-        body = fd;
-      } else {
-        headers['Content-Type'] = 'application/json';
-        body = JSON.stringify(serviceData);
-      }
+let body: any;
+const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+
+if (needsMultipart) {
+  const fd = new FormData();
+  fd.append(
+    'service',
+    new Blob([JSON.stringify(serviceData)], { type: 'application/json' }),
+    'service.json'
+  );
+  formData.images.forEach((img) => fd.append('images', img));
+  body = fd;
+} else {
+  headers['Content-Type'] = 'application/json';
+  body = JSON.stringify(serviceData);
+}
 
       const response = await fetch(url, { method, headers, body });
       const responseData = await response.json();
       if (!response.ok) throw new Error(responseData.message || 'Failed to save service');
 
-      const saved = responseData.data || responseData;
+      const saved = loadServiceImages(responseData.data || responseData, salonId);
+
       if (editingService) {
         setServices(services.map((s) => (s.id === saved.id ? saved : s)));
         setSuccessMessage('Service updated.');
@@ -415,7 +513,18 @@ export default function ServicesPage() {
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error('Submit error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save service');
+      const message = err instanceof Error ? err.message : 'Failed to save service';
+
+      // Detect subscription limit error and show upgrade prompt
+      if (
+        message.toLowerCase().includes('subscription plan limit') ||
+        message.toLowerCase().includes('upgrade to add')
+      ) {
+        setShowUpgradePrompt(message);
+        setShowModal(false);
+      } else {
+        setError(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -471,7 +580,11 @@ export default function ServicesPage() {
 
       if (!response.ok) throw new Error(responseData.message || 'Failed to toggle');
 
-      const updated = responseData.data || responseData;
+      const updated = loadServiceImages(
+        responseData.data || responseData,
+        salon?.id
+      );
+
       setServices(services.map((s) => (s.id === updated.id ? updated : s)));
       setSuccessMessage(`Service ${updated.isActive ? 'activated' : 'deactivated'}.`);
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -631,11 +744,11 @@ export default function ServicesPage() {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400/50 [color-scheme:dark]"
+                className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400/50 [color-scheme:dark]"
               >
-                <option value="all">All services</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="all" className="bg-slate-800 text-white">All services</option>
+                <option value="active" className="bg-slate-800 text-white">Active</option>
+                <option value="inactive" className="bg-slate-800 text-white">Inactive</option>
               </select>
             </div>
 
@@ -645,12 +758,12 @@ export default function ServicesPage() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400/50 [color-scheme:dark]"
+                  className="flex-1 bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400/50 [color-scheme:dark]"
                 >
-                  <option value="name">Name</option>
-                  <option value="amount">Price</option>
-                  <option value="durationMinutes">Duration</option>
-                  <option value="createdAt">Date added</option>
+                  <option value="name" className="bg-slate-800 text-white">Name</option>
+                  <option value="amount" className="bg-slate-800 text-white">Price</option>
+                  <option value="durationMinutes" className="bg-slate-800 text-white">Duration</option>
+                  <option value="createdAt" className="bg-slate-800 text-white">Date added</option>
                 </select>
                 <button
                   onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
@@ -738,7 +851,48 @@ export default function ServicesPage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Upgrade prompt modal */}
+      {showUpgradePrompt && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div className="relative backdrop-blur-2xl bg-slate-900/95 rounded-3xl border border-white/10 w-full max-w-md overflow-hidden shadow-2xl shadow-black/50">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
+
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
+                <BoltIcon className="h-8 w-8 text-amber-400" />
+              </div>
+
+              <h2 className="text-lg font-bold text-white mb-2">
+                Plan limit reached
+              </h2>
+              <p className="text-white/60 text-sm leading-relaxed mb-6">
+                {showUpgradePrompt}
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => {
+                    setShowUpgradePrompt(null);
+                    router.push('/dashboard/subscription');
+                  }}
+                  className="flex-1 relative inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:shadow-lg hover:shadow-amber-500/30 transition-all duration-300 group overflow-hidden"
+                >
+                  <span className="relative z-10">View plans</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                </button>
+                <button
+                  onClick={() => setShowUpgradePrompt(null)}
+                  className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 py-2.5 rounded-xl text-sm font-medium transition-all"
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Form modal */}
       {showModal && (
         <ServiceModal
           editingService={editingService}
@@ -810,7 +964,7 @@ function ServiceCard({
             >
               {service.isActive ? (
                 <EyeIcon className="h-3.5 w-3.5 md:h-4 md:w-4 text-emerald-400" />
-              ) : (
+                           ) : (
                 <EyeSlashIcon className="h-3.5 w-3.5 md:h-4 md:w-4 text-white/30" />
               )}
             </button>
@@ -962,6 +1116,9 @@ function ServiceModal({
 }) {
   const inputClass =
     'w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all';
+  const selectClass =
+    'w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all [color-scheme:dark]';
+  const optionClass = 'bg-slate-800 text-white';
   const labelClass = 'block text-white/60 text-sm font-medium mb-1';
 
   return (
@@ -1045,11 +1202,11 @@ function ServiceModal({
             <select
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className={`${inputClass} [color-scheme:dark]`}
+              className={selectClass}
             >
-              <option value="">Select a category</option>
+              <option value="" className={optionClass}>Select a category</option>
               {categories.map((c) => (
-                <option key={c.id} value={c.name}>
+                <option key={c.id} value={c.name} className={optionClass}>
                   {c.name}
                 </option>
               ))}
@@ -1088,11 +1245,11 @@ function ServiceModal({
             <select
               value={formData.availability}
               onChange={(e) => setFormData({ ...formData, availability: e.target.value })}
-              className={`${inputClass} [color-scheme:dark]`}
+              className={selectClass}
             >
-              <option value="Available">Available</option>
-              <option value="Unavailable">Unavailable</option>
-              <option value="Booked">Booked</option>
+              <option value="Available" className={optionClass}>Available</option>
+              <option value="Unavailable" className={optionClass}>Unavailable</option>
+              <option value="Booked" className={optionClass}>Booked</option>
             </select>
           </div>
 

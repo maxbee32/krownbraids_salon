@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { 
   EnvelopeIcon,
   ArrowRightIcon,
@@ -219,7 +220,7 @@ export default function VerifyPage() {
         }, 3000);
       } else {
         if (data.requiresNewToken) {
-          setError("Your session has expired. Please register again.");
+          setError("Your verification session has expired. Please register again.");
           setTimeout(() => {
             router.push('/signup');
           }, 2000);
@@ -247,7 +248,7 @@ export default function VerifyPage() {
           />
           <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60" />
-          <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay" />
+          {/* <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay" /> */}
         </div>
       </div>
 
@@ -329,6 +330,7 @@ export default function VerifyPage() {
                         onPaste={handlePaste}
                         className="w-14 h-16 text-center bg-white/5 border border-white/10 rounded-xl text-white text-2xl font-bold focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all hover:border-white/20"
                         autoFocus={index === 0}
+                        autoComplete={index === 0 ? "one-time-code" : "off"}
                       />
                     ))}
                   </div>
@@ -391,6 +393,13 @@ export default function VerifyPage() {
                       </span>
                     )}
                   </p>
+
+                  <Link
+                    href="/login"
+                    className="inline-flex items-center gap-1 text-white/30 hover:text-white/60 text-xs transition-colors"
+                  >
+                    ← Back to sign in
+                  </Link>
                 </div>
               </>
             )}

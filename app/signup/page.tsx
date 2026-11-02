@@ -1,6 +1,6 @@
 // app/signup/page.tsx
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -32,6 +32,14 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  // ← redirect away if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      router.replace('/dashboard');
+    }
+  }, [router]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
@@ -57,9 +65,10 @@ export default function SignupPage() {
       return;
     }
 
-    // UK mobile number validation
-    const ukPhone = /^(\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}$/;
-    if (!ukPhone.test(formData.phoneNumber.replace(/\s/g, ""))) {
+    // ← simplified UK mobile validation
+    const ukPhone = /^(?:\+44\s?7\d{3}|07\d{3})\s?\d{3}\s?\d{3}$/;
+    const cleaned = formData.phoneNumber.replace(/\s/g, "");
+    if (!ukPhone.test(cleaned)) {
       setError("Please enter a valid UK mobile number (e.g. 07123 456789)");
       setLoading(false);
       return;
@@ -101,7 +110,7 @@ export default function SignupPage() {
         localStorage.setItem('verifyEmail', formData.email);
 
         setTimeout(() => {
-          router.push('/verify'); // Redirect to verification page
+          router.push('/verify');
         }, 2000);
       } else {
         setError(data.message || 'Signup failed. Please try again.');
@@ -126,11 +135,9 @@ export default function SignupPage() {
             priority
             className="object-cover"
           />
-          {/* Dark Overlay with Gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70"></div>
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60"></div>
-          {/* Subtle pattern overlay */}
-          <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay"></div>
+          {/* <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay"></div> */}
         </div>
       </div>
 
@@ -140,22 +147,17 @@ export default function SignupPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-3xl"></div>
 
       {/* Main Signup Card */}
-      <div className="relative z-10 w-full max-w-lg mx-4">
-        {/* Glassmorphism Card */}
+      <main className="relative z-10 w-full max-w-lg mx-4">
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 shadow-2xl shadow-black/30 overflow-hidden max-h-[90vh]">
-
-          {/* Card Header Gradient Line */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent"></div>
 
-          {/* Decorative Bottom Glow — OUTSIDE the scroll area so it stays fixed */}
           <div className="pointer-events-none absolute -bottom-20 -left-20 w-40 h-40 bg-purple-500/10 rounded-full blur-2xl"></div>
           <div className="pointer-events-none absolute -bottom-20 -right-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl"></div>
 
-          {/* Card Content - Scrollable */}
           <div className="relative p-6 md:p-8 overflow-y-auto max-h-[90vh] custom-scrollbar">
             {/* Logo/Brand */}
             <div className="flex items-center justify-center gap-3 mb-6">
-              <span className="text-2xl font-bold text-white tracking-tight">
+              <span className="font-display text-2xl font-extrabold text-white tracking-tight">
                 KROWN<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">BRAIDS</span>
               </span>
             </div>
@@ -168,7 +170,7 @@ export default function SignupPage() {
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">Account Created!</h2>
                 <p className="text-white/60 text-sm">
-                  We've sent a verification link to your email.
+                  We&apos;ve sent a verification link to your email.
                   <br />
                   Redirecting you now...
                 </p>
@@ -183,7 +185,10 @@ export default function SignupPage() {
 
                 {/* Error Message */}
                 {error && (
-                  <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <div
+                    role="alert"
+                    className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20"
+                  >
                     <p className="text-red-400 text-sm text-center">{error}</p>
                   </div>
                 )}
@@ -206,6 +211,7 @@ export default function SignupPage() {
                         onChange={handleChange}
                         placeholder="e.g. Amara"
                         required
+                        autoComplete="given-name"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                     </div>
@@ -227,6 +233,7 @@ export default function SignupPage() {
                         onChange={handleChange}
                         placeholder="e.g. Okafor"
                         required
+                        autoComplete="family-name"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                     </div>
@@ -248,6 +255,7 @@ export default function SignupPage() {
                         onChange={handleChange}
                         placeholder="you@example.co.uk"
                         required
+                        autoComplete="email"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                     </div>
@@ -269,11 +277,12 @@ export default function SignupPage() {
                         onChange={handleChange}
                         placeholder="07123 456789"
                         required
+                        autoComplete="tel"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                     </div>
                     <p className="text-white/30 text-[10px] mt-1.5 pl-1">
-                      UK mobile number — we'll use this to send booking reminders
+                      UK mobile number — we&apos;ll use this to send booking reminders
                     </p>
                   </div>
 
@@ -294,11 +303,13 @@ export default function SignupPage() {
                         placeholder="Create a password (min 8 characters)"
                         required
                         minLength={8}
+                        autoComplete="new-password"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
                       >
                         {showPassword ? (
@@ -326,11 +337,13 @@ export default function SignupPage() {
                         onChange={handleChange}
                         placeholder="Confirm your password"
                         required
+                        autoComplete="new-password"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                       />
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
                       >
                         {showConfirmPassword ? (
@@ -460,7 +473,7 @@ export default function SignupPage() {
         <p className="text-center text-white/20 text-xs mt-6 tracking-widest uppercase">
           Secure Registration • UK GDPR Compliant
         </p>
-      </div>
+      </main>
 
       {/* Custom Scrollbar Styles */}
       <style jsx>{`

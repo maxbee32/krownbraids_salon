@@ -10,7 +10,8 @@ import {
   ShoppingBagIcon,
   CreditCardIcon,
   ExclamationTriangleIcon,
-  CheckIcon,
+  CheckCircleIcon,
+  XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 
@@ -18,65 +19,125 @@ import {
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-type NotificationType =
-  | "booking"
-  | "payment"
-  | "stock"
-  | "subscription"
-  | "account";
+/** Maps 1:1 to the backend's NotificationType enum. */
+type BackendNotificationType =
+  | "NEW_ADMIN_REGISTERED"
+  | "SALON_OWNER_EMAIL_VERIFICATION"
+  | "SALON_OWNER_OTP"
+  | "PAYMENT_CONFIRMATION"
+  | "ADMIN_SALON_REGISTRATION"
+  | "SUPPLIER_EMAIL_VERIFICATION"
+  | "SUPPLIER_PASSWORD_RESET"
+  | "SUPPLIER_REJECTED"
+  | "SUPPLIER_APPROVED"
+  | "SALON_APPROVED"
+  | "SALON_REJECTED";
 
-interface NotificationItem {
-  id: string;
-  type: NotificationType;
-  title: string;
-  body: string;
-  /** ISO timestamp. Format for display with a relative-time helper. */
-  createdAt: string;
+interface ApiNotification {
+  id: number;
+  eventId: string;
+  subject: string;
+  message: string;
   read: boolean;
-  /** Where clicking the notification should take the user */
-  href?: string;
+  createdAt: string;
+  recipientType: string; // "SALON" | "SUPPLIER" | "ADMIN"
 }
 
-const STORAGE_KEY = "krownbraids_notifications_read";
+interface NotificationListResponse {
+  notifications: ApiNotification[];
+  unread: number;
+}
 
 /* ------------------------------------------------------------------ */
-/*  Icon + colour per type                                             */
+/*  Visual mapping — backend type → icon + colour                      */
 /* ------------------------------------------------------------------ */
 
 const TYPE_META: Record<
-  NotificationType,
-  { icon: any; color: string; bg: string; border: string }
+  string,
+  { icon: any; color: string; bg: string; border: string; href?: string }
 > = {
-  booking: {
-    icon: CalendarDaysIcon,
-    color: "text-cyan-400",
-    bg: "bg-cyan-500/10",
-    border: "border-cyan-500/20",
-  },
-  payment: {
-    icon: BanknotesIcon,
+  // Salon owner lifecycle
+  SALON_APPROVED: {
+    icon: CheckCircleIcon,
     color: "text-emerald-400",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/20",
+    href: "/dashboard",
   },
-  stock: {
-    icon: ShoppingBagIcon,
+  SALON_REJECTED: {
+    icon: XCircleIcon,
+    color: "text-red-400",
+    bg: "bg-red-500/10",
+    border: "border-red-500/20",
+    href: "/rejected",
+  },
+  SALON_OWNER_EMAIL_VERIFICATION: {
+    icon: ExclamationTriangleIcon,
     color: "text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
   },
-  subscription: {
+  SALON_OWNER_OTP: {
     icon: CreditCardIcon,
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+    border: "border-cyan-500/20",
+  },
+  PAYMENT_CONFIRMATION: {
+    icon: BanknotesIcon,
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/20",
+    href: "/dashboard/subscription",
+  },
+
+  // Suppliers
+  SUPPLIER_APPROVED: {
+    icon: CheckCircleIcon,
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/20",
+  },
+  SUPPLIER_REJECTED: {
+    icon: XCircleIcon,
+    color: "text-red-400",
+    bg: "bg-red-500/10",
+    border: "border-red-500/20",
+  },
+  SUPPLIER_EMAIL_VERIFICATION: {
+    icon: ExclamationTriangleIcon,
+    color: "text-amber-400",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/20",
+  },
+  SUPPLIER_PASSWORD_RESET: {
+    icon: CreditCardIcon,
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+    border: "border-cyan-500/20",
+  },
+
+  // Admin
+  NEW_ADMIN_REGISTERED: {
+    icon: ShoppingBagIcon,
     color: "text-purple-400",
     bg: "bg-purple-500/10",
     border: "border-purple-500/20",
   },
-  account: {
-    icon: ExclamationTriangleIcon,
-    color: "text-pink-400",
-    bg: "bg-pink-500/10",
-    border: "border-pink-500/20",
+  ADMIN_SALON_REGISTRATION: {
+    icon: ShoppingBagIcon,
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+    border: "border-cyan-500/20",
+    href: "/dashboard/admin/salons",
   },
+};
+
+const FALLBACK_META = {
+  icon: BellIcon,
+  color: "text-white/60",
+  bg: "bg-white/5",
+  border: "border-white/10",
 };
 
 /* ------------------------------------------------------------------ */
@@ -102,60 +163,7 @@ function formatRelativeTime(iso: string): string {
   if (diffDay < 7) return `${diffDay} days ago`;
 
   const d = new Date(iso);
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/*  Initial seed (replace with real API later)                         */
-/* ------------------------------------------------------------------ */
-
-function seedNotifications(): NotificationItem[] {
-  const now = Date.now();
-  const minutesAgo = (m: number) => new Date(now - m * 60_000).toISOString();
-  const hoursAgo = (h: number) => new Date(now - h * 3_600_000).toISOString();
-  const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString();
-
-  return [
-    {
-      id: "n1",
-      type: "booking",
-      title: "New booking confirmed",
-      body: "Amara Okafor — Knotless braids, tomorrow at 09:30",
-      createdAt: minutesAgo(2),
-      read: false,
-      href: "/dashboard/bookings",
-    },
-    {
-      id: "n2",
-      type: "stock",
-      title: "Low stock alert",
-      body: "X-Pression braiding hair — 4 units remaining",
-      createdAt: hoursAgo(1),
-      read: false,
-      href: "/dashboard/marketplace",
-    },
-    {
-      id: "n3",
-      type: "payment",
-      title: "Payment released",
-      body: "£120.00 released to your account",
-      createdAt: hoursAgo(3),
-      read: false,
-      href: "/dashboard/revenue",
-    },
-    {
-      id: "n4",
-      type: "subscription",
-      title: "Subscription renewal",
-      body: "Professional plan renews in 23 days",
-      createdAt: daysAgo(1),
-      read: true,
-      href: "/dashboard/subscription",
-    },
-  ];
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
 /* ------------------------------------------------------------------ */
@@ -166,7 +174,9 @@ export function NotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number }>({
@@ -174,44 +184,59 @@ export function NotificationBell() {
     right: 0,
   });
 
-  /* ---------- Load + persist read state ---------- */
+  /* ------------------------------------------------------------------ */
+  /*  Fetch notifications from the backend                               */
+  /* ------------------------------------------------------------------ */
+
+  const fetchNotifications = async () => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) return;
+
+    try {
+      setLoading(true);
+
+      // Adjust path if your Next.js proxy is at a different route
+      const res = await fetch("/api/auth/notifications", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        console.warn("Failed to fetch notifications:", res.status);
+        return;
+      }
+
+      const data: NotificationListResponse = await res.json();
+      setNotifications(data.notifications ?? []);
+      setUnread(data.unread ?? 0);
+    } catch (err) {
+      console.warn("Error loading notifications:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ---------- Initial fetch + polling ---------- */
+
   useEffect(() => {
     setMounted(true);
+    fetchNotifications();
 
-    // Load seed data + any persisted read IDs
-    const seed = seedNotifications();
-    let readIds: Set<string> = new Set();
-
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) readIds = new Set(parsed);
-      }
-    } catch {
-      // ignore
-    }
-
-    const withReadState = seed.map((n) => ({
-      ...n,
-      read: n.read || readIds.has(n.id),
-    }));
-
-    setNotifications(withReadState);
+    // Poll every 60s so the badge stays fresh
+    const id = setInterval(fetchNotifications, 60_000);
+    return () => clearInterval(id);
   }, []);
 
-  /* ---------- Persist read IDs whenever they change ---------- */
+  /* ---------- Refetch whenever the dropdown opens ---------- */
+
   useEffect(() => {
-    if (!mounted) return;
-    try {
-      const readIds = notifications.filter((n) => n.read).map((n) => n.id);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(readIds));
-    } catch {
-      // ignore
+    if (open) {
+      fetchNotifications();
     }
-  }, [notifications, mounted]);
+  }, [open]);
 
   /* ---------- Position the dropdown ---------- */
+
   useEffect(() => {
     if (!open || !buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
@@ -222,6 +247,7 @@ export function NotificationBell() {
   }, [open]);
 
   /* ---------- Outside click + Escape ---------- */
+
   useEffect(() => {
     if (!open) return;
 
@@ -248,38 +274,70 @@ export function NotificationBell() {
     };
   }, [open]);
 
-  /* ---------- Actions ---------- */
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
-    [notifications]
-  );
+  /* ------------------------------------------------------------------ */
+  /*  Actions                                                            */
+  /* ------------------------------------------------------------------ */
 
-  const handleItemClick = (n: NotificationItem) => {
-    // 1. Mark as read
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === n.id ? { ...item, read: true } : item))
-    );
+  const handleItemClick = async (n: ApiNotification) => {
+    // Optimistic UI
+    if (!n.read) {
+      setNotifications((prev) =>
+        prev.map((item) =>
+          item.id === n.id ? { ...item, read: true } : item
+        )
+      );
+      setUnread((u) => Math.max(0, u - 1));
 
-    // 2. Close the dropdown
+      // Fire and forget — don't block navigation
+      const token = localStorage.getItem("adminToken");
+      if (token) {
+        fetch(`/api/auth/notifications/${n.id}/read`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {
+          // If it fails, the next poll will reconcile
+        });
+      }
+    }
+
     setOpen(false);
 
-    // 3. Navigate
-    if (n.href) {
-      router.push(n.href);
+    const meta = TYPE_META[n.type as string] ?? FALLBACK_META;
+    if (meta.href) {
+      router.push(meta.href);
     }
   };
 
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+  const handleMarkAllRead = async () => {
+    // Optimistic UI
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnread(0);
+
+    const token = localStorage.getItem("adminToken");
+    if (!token) return;
+
+    try {
+      await fetch("/api/auth/notifications/read-all", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // Next poll will reconcile
+    }
   };
 
-  const handleDismiss = (
-    e: React.MouseEvent<HTMLButtonElement>,
-    id: string
-  ) => {
-    e.stopPropagation();
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
+  /* ------------------------------------------------------------------ */
+  /*  Derived                                                            */
+  /* ------------------------------------------------------------------ */
+
+  const visibleNotifications = useMemo(
+    () => notifications.slice(0, 20),
+    [notifications]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /*  Render                                                             */
+  /* ------------------------------------------------------------------ */
 
   return (
     <>
@@ -288,13 +346,13 @@ export function NotificationBell() {
         ref={buttonRef}
         onClick={() => setOpen(!open)}
         className="relative p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
-        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+        aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
         aria-expanded={open}
       >
         <BellIcon className="w-[18px] h-[18px] text-white/70" />
-        {unreadCount > 0 && (
+        {unread > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 text-[10px] font-bold text-white flex items-center justify-center border-2 border-[#0a0a0a]">
-            {unreadCount > 9 ? "9+" : unreadCount}
+            {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
@@ -320,13 +378,13 @@ export function NotificationBell() {
                 <p className="text-[13px] font-semibold text-white">
                   Notifications
                 </p>
-                {unreadCount > 0 && (
+                {unread > 0 && (
                   <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 rounded-full">
-                    {unreadCount} new
+                    {unread} new
                   </span>
                 )}
               </div>
-              {unreadCount > 0 && (
+              {unread > 0 && (
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
@@ -339,7 +397,12 @@ export function NotificationBell() {
 
             {/* List */}
             <div className="max-h-96 overflow-y-auto custom-scrollbar">
-              {notifications.length === 0 ? (
+              {loading && visibleNotifications.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <div className="h-6 w-6 mx-auto animate-spin rounded-full border-2 border-purple-500/30 border-t-cyan-400" />
+                  <p className="text-xs text-white/40 mt-3">Loading…</p>
+                </div>
+              ) : visibleNotifications.length === 0 ? (
                 <div className="px-4 py-10 text-center">
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
                     <BellIcon className="h-5 w-5 text-white/30" />
@@ -352,8 +415,9 @@ export function NotificationBell() {
                   </p>
                 </div>
               ) : (
-                notifications.map((n) => {
-                  const meta = TYPE_META[n.type];
+                visibleNotifications.map((n) => {
+                  const meta =
+                    TYPE_META[n.type as string] ?? FALLBACK_META;
                   const Icon = meta.icon;
                   return (
                     <div
@@ -367,21 +431,19 @@ export function NotificationBell() {
                           handleItemClick(n);
                         }
                       }}
-                      className={`group relative w-full text-left px-4 py-3 border-b border-white/[0.04] transition-colors cursor-pointer ${
+                      className={`w-full text-left px-4 py-3 border-b border-white/[0.04] transition-colors cursor-pointer ${
                         n.read
                           ? "hover:bg-white/5"
                           : "bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]"
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        {/* Type icon */}
                         <div
                           className={`w-8 h-8 rounded-lg ${meta.bg} border ${meta.border} flex items-center justify-center flex-shrink-0 mt-0.5`}
                         >
                           <Icon className={`h-4 w-4 ${meta.color}`} />
                         </div>
 
-                        {/* Content */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <p
@@ -389,29 +451,19 @@ export function NotificationBell() {
                                 n.read ? "text-white/70" : "text-white"
                               }`}
                             >
-                              {n.title}
+                              {n.subject}
                             </p>
                             {!n.read && (
                               <span className="mt-1 w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
                             )}
                           </div>
                           <p className="text-xs text-white/50 mt-0.5 leading-relaxed line-clamp-2">
-                            {n.body}
+                            {n.message}
                           </p>
                           <p className="text-[10px] text-white/30 mt-1">
                             {formatRelativeTime(n.createdAt)}
                           </p>
                         </div>
-
-                        {/* Dismiss — appears on hover */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleDismiss(e, n.id)}
-                          className="absolute top-2 right-2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-opacity"
-                          aria-label="Dismiss"
-                        >
-                          <XMarkIcon className="h-3 w-3 text-white/40" />
-                        </button>
                       </div>
                     </div>
                   );

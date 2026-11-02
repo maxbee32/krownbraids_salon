@@ -1,6 +1,6 @@
 // app/dashboard/layout.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import {
@@ -25,8 +25,8 @@ const formatStatus = (status: string) => {
     APPROVED:         { label: "Active",         color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", icon: CheckCircleIcon },
     ACTIVE:           { label: "Active",         color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", icon: CheckCircleIcon },
     COMPLETED:        { label: "Active",         color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", icon: CheckCircleIcon },
-    REJECTED:         { label: "Declined",       color: "text-red-400", bg: "bg-red-500/10 border-red-500/20", icon: XCircleIcon },
-    DECLINED:         { label: "Declined",       color: "text-red-400", bg: "bg-red-500/10 border-red-500/20", icon: XCircleIcon },
+    REJECTED:         { label: "Declined",       color: "text-red-400",     bg: "bg-red-500/10 border-red-500/20",       icon: XCircleIcon },
+    DECLINED:         { label: "Declined",       color: "text-red-400",     bg: "bg-red-500/10 border-red-500/20",       icon: XCircleIcon },
   };
   return map[status] || {
     label: status?.replace(/_/g, " ") || "Unknown",
@@ -41,6 +41,7 @@ const formatStatus = (status: string) => {
 /* ------------------------------------------------------------------ */
 
 const ACTIVE_STATUSES = ["APPROVED", "ACTIVE", "COMPLETED"];
+const REJECTED_STATUSES = ["REJECTED", "DECLINED"];
 
 const ALWAYS_ALLOWED = [
   "/dashboard",
@@ -62,7 +63,6 @@ const isPathAllowed = (pathname: string, salonStatus: string): boolean => {
 
 /* ------------------------------------------------------------------ */
 /*  Normalise the salon payload                                        */
-/*  Handles camelCase and PascalCase keys for the subscription fields  */
 /* ------------------------------------------------------------------ */
 
 interface RawSalon {
@@ -71,12 +71,11 @@ interface RawSalon {
   city?: string;
   address?: string;
   selectedPlanId?: number;
+  planName?: string | null;
   status?: string;
   onboardingStep?: string;
-  // camelCase (preferred)
   subscriptionStartDate?: string | null;
   subscriptionEndDate?: string | null;
-  // PascalCase (legacy)
   SubscriptionStartDate?: string | null;
   SubscriptionEndDate?: string | null;
   [key: string]: any;
@@ -87,7 +86,8 @@ const toSidebarSalon = (raw: RawSalon): SidebarSalon => ({
   name: raw.name || "Your Salon",
   city: raw.city || "",
   address: raw.address || "",
-  selectedPlanId: raw.selectedPlanId ?? 1,
+  selectedPlanId: raw.selectedPlanId ?? null,
+  planName: raw.planName ?? null,
   subscriptionStartDate:
     raw.subscriptionStartDate ?? raw.SubscriptionStartDate ?? null,
   subscriptionEndDate:
@@ -101,12 +101,171 @@ const toSidebarSalon = (raw: RawSalon): SidebarSalon => ({
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+
   const [salon, setSalon] = useState<SidebarSalon | null>(null);
   const [salonStatus, setSalonStatus] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
 
   const { msRemaining, showWarning, refresh } = useSessionExpiry();
+
+  /* ---------------------------------------------------------------- */
+  /*  Reusable salon loader (also used by the "plan-changed" listener) */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Loads the salon from the Business service and updates sidebar state.
+   * Returns the resolved status so callers can apply route guards.
+   *
+   * - On the first call (route guard path), it will redirect if the salon
+   *   is missing, rejected, onboarding-incomplete, or the path is forbidden.
+   * - On subsequent calls (triggered by `plan-changed`), it just refreshes
+   *   the salon fields without enforcing navigation (the user is already
+   *   on a valid route).
+   */
+  const loadSalon = useCallback(
+    async (opts?: { enforceRouteGuards?: boolean }): Promise<string | null> => {
+      const enforceRouteGuards = opts?.enforceRouteGuards ?? false;
+
+      try {
+        const token = localStorage.getItem("adminToken");
+        if (!token) {
+          if (enforceRouteGuards) router.replace("/login");
+          return null;
+        }
+
+        const onboardingResponse = await fetch(
+          "/api/auth/business/salons/onboarding",
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (!onboardingResponse.ok) {
+          if (enforceRouteGuards && onboardingResponse.status === 404) {
+            router.replace("/setup");
+          }
+          return null;
+        }
+
+        const onboardingData = await onboardingResponse.json();
+        const salonId = onboardingData.salonId || onboardingData.id;
+        if (!salonId) {
+          if (enforceRouteGuards) router.replace("/setup");
+          return null;
+        }
+
+        const salonResponse = await fetch(
+          `/api/auth/business/salons/${salonId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        let resolvedStatus: string;
+
+        if (salonResponse.ok) {
+          const data = await salonResponse.json();
+          const full: RawSalon = data.data || data;
+
+          if (full?.id) {
+            setSalon(toSidebarSalon(full));
+            resolvedStatus =
+              full.status || full.onboardingStep || "PENDING_APPROVAL";
+            setSalonStatus(resolvedStatus);
+          } else {
+            resolvedStatus = "PENDING_APPROVAL";
+            setSalonStatus(resolvedStatus);
+          }
+        } else {
+          setSalon({
+            id: salonId,
+            name: "Your Salon",
+            city: "",
+            address: "",
+            selectedPlanId: onboardingData.selectedPlanId ?? null,
+            planName: null,
+            subscriptionStartDate: null,
+            subscriptionEndDate: null,
+          });
+          resolvedStatus =
+            onboardingData.step || onboardingData.status || "PENDING_APPROVAL";
+          setSalonStatus(resolvedStatus);
+        }
+
+        if (!enforceRouteGuards) {
+          return resolvedStatus;
+        }
+
+        /* Route guards (first load only) */
+
+        if (REJECTED_STATUSES.includes(resolvedStatus)) {
+          router.replace("/pending");
+          return resolvedStatus;
+        }
+
+        if (
+          !onboardingData.completed &&
+          onboardingData.step !== "COMPLETED"
+        ) {
+          router.replace("/setup");
+          return resolvedStatus;
+        }
+
+        if (!isPathAllowed(pathname, resolvedStatus)) {
+          router.replace("/dashboard");
+          return resolvedStatus;
+        }
+
+        setVerified(true);
+        return resolvedStatus;
+      } catch (err) {
+        console.error("Error loading salon:", err);
+        return null;
+      }
+    },
+    [pathname, router]
+  );
+
+  /* ---------------------------------------------------------------- */
+  /*  Effects                                                         */
+  /* ---------------------------------------------------------------- */
+
+  // 1. Read the token once on mount (client only)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("adminToken");
+    setHasToken(Boolean(token));
+
+    if (!token) {
+      router.replace("/login");
+    }
+  }, [router]);
+
+  // 2. Session-expiring event dispatch
+  useEffect(() => {
+    if (showWarning) {
+      window.dispatchEvent(new CustomEvent("session-expiring"));
+    }
+  }, [showWarning]);
+
+  // 3. Onboarding + salon verification (route guard path)
+  useEffect(() => {
+    if (hasToken !== true) return;
+    loadSalon({ enforceRouteGuards: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasToken, pathname]);
+
+  // 4. Refresh sidebar data whenever a plan change completes
+  useEffect(() => {
+    if (hasToken !== true) return;
+    const handler = () => {
+      loadSalon({ enforceRouteGuards: false });
+    };
+    window.addEventListener("plan-changed", handler);
+    return () => window.removeEventListener("plan-changed", handler);
+  }, [hasToken, loadSalon]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Handlers                                                        */
+  /* ---------------------------------------------------------------- */
 
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
@@ -148,94 +307,67 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  useEffect(() => {
-    if (showWarning) {
-      window.dispatchEvent(new CustomEvent("session-expiring"));
-    }
-  }, [showWarning]);
+  /* ---------------------------------------------------------------- */
+  /*  RENDER                                                          */
+  /* ---------------------------------------------------------------- */
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const token = localStorage.getItem("adminToken");
-        if (!token) {
-          router.push("/login");
-          return;
-        }
+  if (hasToken === null) {
+    return (
+      <div className="relative min-h-screen w-full overflow-hidden bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900">
+        <div className="fixed inset-0 w-full h-full z-0">
+          <div className="relative w-full h-full">
+            <Image
+              src="/assets/styke-12.webp"
+              alt=""
+              fill
+              priority
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70" />
+          </div>
+        </div>
+        <div className="relative z-10 min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500/30 border-t-cyan-400 mx-auto" />
+            <p className="text-white/40 mt-4 text-sm">Loading…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-        const onboardingResponse = await fetch(
-          "/api/auth/business/salons/onboarding",
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+  if (hasToken === false) {
+    return null;
+  }
 
-        if (!onboardingResponse.ok) {
-          if (onboardingResponse.status === 404) {
-            router.push("/dashboard/setup");
-            return;
-          }
-          return;
-        }
+  if (!verified) {
+    return (
+      <div className="relative min-h-screen w-full overflow-hidden bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900">
+        <div className="fixed inset-0 w-full h-full z-0">
+          <div className="relative w-full h-full">
+            <Image
+              src="/assets/styke-12.webp"
+              alt=""
+              fill
+              priority
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70" />
+          </div>
+        </div>
+        <div className="relative z-10 min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500/30 border-t-cyan-400 mx-auto" />
+            <p className="text-white/40 mt-4 text-sm">Loading…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-        const onboardingData = await onboardingResponse.json();
-        const salonId = onboardingData.salonId || onboardingData.id;
-        if (!salonId) {
-          router.push("/dashboard/setup");
-          return;
-        }
-
-        const salonResponse = await fetch(
-          `/api/auth/business/salons/${salonId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-
-        let resolvedStatus: string;
-
-        if (salonResponse.ok) {
-          const data = await salonResponse.json();
-          const full: RawSalon = data.data || data;
-
-          if (full?.id) {
-            setSalon(toSidebarSalon(full));
-
-            resolvedStatus =
-              full.status || full.onboardingStep || "PENDING_APPROVAL";
-            setSalonStatus(resolvedStatus);
-          } else {
-            resolvedStatus = "PENDING_APPROVAL";
-            setSalonStatus(resolvedStatus);
-          }
-        } else {
-          const fallbackSalon: SidebarSalon = {
-            id: salonId,
-            name: "Your Salon",
-            city: "",
-            address: "",
-            selectedPlanId: onboardingData.selectedPlanId || 1,
-            subscriptionStartDate: null,
-            subscriptionEndDate: null,
-          };
-          setSalon(fallbackSalon);
-
-          resolvedStatus =
-            onboardingData.step || onboardingData.status || "PENDING_APPROVAL";
-          setSalonStatus(resolvedStatus);
-        }
-
-        // Route-level authorization check happens here
-        if (!isPathAllowed(pathname, resolvedStatus)) {
-          router.replace("/dashboard");
-          return;
-        }
-
-        setVerified(true);
-      } catch (err) {
-        console.error("Error loading salon:", err);
-      }
-    };
-
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, router]);
+  /* ---------------------------------------------------------------- */
+  /*  Verified render                                                 */
+  /* ---------------------------------------------------------------- */
 
   const statusLabel = salonStatus ? formatStatus(salonStatus) : null;
 
@@ -247,7 +379,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 text-white">
-      {/* Background */}
       <div className="fixed inset-0 w-full h-full z-0">
         <div className="relative w-full h-full">
           <Image
@@ -262,7 +393,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
 
-      {/* Glow orbs */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-pink-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
@@ -284,18 +414,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onOpenSidebar={() => setSidebarOpen(true)}
         />
 
-        {verified ? (
-          <main className="p-4 md:p-8 max-w-6xl mx-auto">{children}</main>
-        ) : (
-          <main className="p-4 md:p-8 max-w-6xl mx-auto">
-            <div className="flex items-center justify-center py-24">
-              <div className="text-center">
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500/30 border-t-cyan-400 mx-auto" />
-                <p className="text-white/40 mt-4 text-sm">Loading…</p>
-              </div>
-            </div>
-          </main>
-        )}
+        <main className="p-4 md:p-8 max-w-6xl mx-auto">{children}</main>
       </div>
 
       <SessionExpiryModal

@@ -1,7 +1,15 @@
 // app/layout.tsx
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { ServiceProvider } from '@/app/context/ServiceContext';
+import { Sora } from "next/font/google";
+import { ServiceProvider } from "@/app/context/ServiceContext";
+
+const sora = Sora({
+  subsets: ["latin"],
+  variable: "--font-sora",
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700", "800"],
+});
 
 export const metadata: Metadata = {
   title: "Krownbraids - Luxury Hair & Beauty Studio",
@@ -25,9 +33,8 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className={`${sora.variable} h-full`}>
       <body className="min-h-dvh h-full antialiased">
-        {/* ✅ Wrap children with ServiceProvider */}
         <ServiceProvider>
           {children}
         </ServiceProvider>

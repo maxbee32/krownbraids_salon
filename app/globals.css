@@ -1,6 +1,13 @@
 /* app/globals.css */
 @import "tailwindcss";
 
+
+@theme {
+  --font-sans: var(--font-sora), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+}
+
 /* Base styles */
 html, body {
   margin: 0;
@@ -59,4 +66,66 @@ html {
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* ================================================================== */
+/*  Ideal Postcodes AddressFinder — theme override                     */
+/*  Scoped to .address-finder-wrapper so nothing else is affected.     */
+/* ================================================================== */
+
+.address-finder-wrapper input,
+.address-finder-wrapper select {
+  width: 100% !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0.75rem !important;
+  padding: 0.625rem 0.75rem !important;
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  color: #ffffff !important;
+  outline: none !important;
+  font-family: inherit !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.address-finder-wrapper input::placeholder {
+  color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.address-finder-wrapper input:focus,
+.address-finder-wrapper select:focus {
+  border-color: rgba(34, 211, 238, 0.5) !important;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2) !important;
+}
+
+/* Autocomplete dropdown */
+.address-finder-wrapper ul,
+.address-finder-wrapper [role="listbox"] {
+  background-color: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0.75rem !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+  padding: 0.25rem !important;
+  margin-top: 0.25rem !important;
+  list-style: none !important;
+  z-index: 50 !important;
+}
+
+.address-finder-wrapper li,
+.address-finder-wrapper [role="option"] {
+  padding: 0.5rem 0.75rem !important;
+  border-radius: 0.5rem !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 0.875rem !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+.address-finder-wrapper li:hover,
+.address-finder-wrapper [role="option"]:hover,
+.address-finder-wrapper [role="option"][aria-selected="true"] {
+  background-color: rgba(34, 211, 238, 0.15) !important;
+  color: #ffffff !important;
 }

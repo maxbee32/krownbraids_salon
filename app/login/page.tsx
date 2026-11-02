@@ -1,6 +1,6 @@
 // app/login/page.tsx
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -20,6 +20,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // ← redirect away if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      router.replace('/dashboard');
+    }
+  }, [router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -38,6 +46,14 @@ export default function LoginPage() {
         localStorage.setItem('adminToken', data.token);
         localStorage.setItem('adminData', JSON.stringify(data.user));
         router.push('/dashboard');
+      } else if (data.requiresVerification) {
+        // ← unverified account: send them to /verify
+        localStorage.setItem('verifyEmail', email);
+        if (data.token) {
+          // If the API hands back a temporary token for verification, use it
+          localStorage.setItem('adminToken', data.token);
+        }
+        router.push('/verify');
       } else {
         setError(data.message || 'Invalid credentials');
       }
@@ -61,11 +77,8 @@ export default function LoginPage() {
             priority
             className="object-cover"
           />
-          {/* Dark Overlay with Gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/70"></div>
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60"></div>
-          {/* Subtle pattern overlay */}
-          <div className="absolute inset-0 bg-[url('/assets/noise.png')] opacity-10 mix-blend-overlay"></div>
         </div>
       </div>
 
@@ -75,18 +88,14 @@ export default function LoginPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-3xl"></div>
 
       {/* Main Login Card */}
-      <div className="relative z-10 w-full max-w-md mx-4">
-        {/* Glassmorphism Card */}
+      <main className="relative z-10 w-full max-w-md mx-4">
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 shadow-2xl shadow-black/30 overflow-hidden">
-
-          {/* Card Header Gradient Line */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent"></div>
 
-          {/* Card Content */}
           <div className="p-8 md:p-10">
             {/* Logo/Brand */}
             <div className="flex items-center justify-center gap-3 mb-8">
-              <span className="text-2xl font-bold text-white tracking-tight">
+              <span className="font-display text-2xl font-extrabold text-white tracking-tight">
                 KROWN<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">BRAIDS</span>
               </span>
             </div>
@@ -99,7 +108,10 @@ export default function LoginPage() {
 
             {/* Error Message */}
             {error && (
-              <div className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <div
+                role="alert"
+                className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20"
+              >
                 <p className="text-red-400 text-sm text-center">{error}</p>
               </div>
             )}
@@ -121,6 +133,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.co.uk"
                     required
+                    autoComplete="email"
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                   />
                 </div>
@@ -141,11 +154,13 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
                     required
+                    autoComplete="current-password"
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
                   >
                     {showPassword ? (
@@ -222,7 +237,7 @@ export default function LoginPage() {
             {/* Sign Up Link */}
             <div className="mt-6 text-center">
               <p className="text-white/40 text-sm">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <button
                   onClick={() => router.push('/signup')}
                   className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 font-semibold hover:from-cyan-300 hover:to-purple-300 transition-all"
@@ -237,7 +252,7 @@ export default function LoginPage() {
             <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl"></div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

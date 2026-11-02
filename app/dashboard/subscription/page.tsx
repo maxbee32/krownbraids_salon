@@ -1,6 +1,6 @@
 // app/dashboard/subscription/page.tsx
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   CreditCardIcon,
   CheckCircleIcon,
@@ -14,10 +14,25 @@ import {
   LockClosedIcon,
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  EmbeddedCheckoutProvider,
+  EmbeddedCheckout,
+} from "@stripe/react-stripe-js";
+
+/* ------------------------------------------------------------------ */
+/*  Stripe singleton                                                  */
+/* ------------------------------------------------------------------ */
+
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+);
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
+
+type BillingCycle = "monthly" | "yearly";
 
 interface Plan {
   id: number;
@@ -26,6 +41,7 @@ interface Plan {
   description: string;
   monthlyPrice: number;
   yearlyPrice: number;
+  trialDays: number;
   maxBookingsPerMonth: number;
   maxServices: number;
   onlineBooking: boolean;
@@ -80,6 +96,13 @@ interface RawSalon {
   [key: string]: any;
 }
 
+interface CheckoutState {
+  plan: Plan;
+  cycle: BillingCycle;
+  clientSecret: string;
+  sessionId: string | null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -108,14 +131,55 @@ const daysUntil = (iso: string | null | undefined) => {
 const planNameFromId = (id: number) =>
   id === 1 ? "Starter" : id === 2 ? "Professional" : id === 3 ? "Business" : "Starter";
 
-/**
- * Pick a subscription date from a raw salon payload regardless of casing.
- */
 const pickSubStart = (s: RawSalon): string | null =>
   s.subscriptionStartDate ?? s.SubscriptionStartDate ?? null;
 
 const pickSubEnd = (s: RawSalon): string | null =>
   s.subscriptionEndDate ?? s.SubscriptionEndDate ?? null;
+
+const planPrice = (plan: Plan, cycle: BillingCycle): number =>
+  cycle === "yearly" ? plan.yearlyPrice : plan.monthlyPrice;
+
+// ← NEW — fire a DOM event so the layout/sidebar knows to re-fetch
+const notifyPlanChanged = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("plan-changed"));
+  }
+};
+
+const getPlanSelectability = ({
+  plan,
+  currentPlan,
+  subscription,
+}: {
+  plan: Plan;
+  currentPlan?: Plan;
+  subscription: Subscription | null;
+}): { selectable: boolean; reason?: string } => {
+  if (currentPlan && plan.id === currentPlan.id) {
+    return { selectable: false, reason: "Current plan" };
+  }
+
+  const isPlanFree = plan.monthlyPrice === 0;
+  const isCurrentPaid = (currentPlan?.monthlyPrice ?? 0) > 0;
+
+  if (isPlanFree) {
+    if (isCurrentPaid) {
+      return {
+        selectable: false,
+        reason: "You're on a paid plan — the free plan is no longer available.",
+      };
+    }
+    if (subscription?.currentPeriodStart) {
+      return {
+        selectable: false,
+        reason: "You've already used your free trial.",
+      };
+    }
+  }
+
+  return { selectable: true };
+};
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
@@ -133,6 +197,10 @@ export default function SubscriptionPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState<Plan | null>(null);
 
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
+
+  const [checkout, setCheckout] = useState<CheckoutState | null>(null);
+
   /* ---------- Load everything ---------- */
   const loadAll = async () => {
     setLoading(true);
@@ -142,10 +210,11 @@ export default function SubscriptionPage() {
       const token = localStorage.getItem("adminToken");
       if (!token) return;
 
-      /* ---------- 1. Load plans ---------- */
       let loadedPlans: Plan[] = [];
       try {
-        const plansRes = await fetch("/api/auth/subscription/plan");
+        const plansRes = await fetch("/api/auth/subscription/plan", {
+          cache: "no-store",                                 // ← NEW
+        });
         if (plansRes.ok) {
           const json = await plansRes.json();
           const raw = Array.isArray(json) ? json : json.data || json.plans || [];
@@ -156,11 +225,13 @@ export default function SubscriptionPage() {
         console.warn("Failed to load plans:", err);
       }
 
-      /* ---------- 2. Load salon (source of truth for subscription) ---------- */
       try {
         const onboardingRes = await fetch(
           "/api/auth/business/salons/onboarding",
-          { headers: { Authorization: `Bearer ${token}` } }
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",                               // ← NEW
+          }
         );
 
         if (onboardingRes.ok) {
@@ -170,7 +241,10 @@ export default function SubscriptionPage() {
           if (salonId) {
             const salonRes = await fetch(
               `/api/auth/business/salons/${salonId}`,
-              { headers: { Authorization: `Bearer ${token}` } }
+              {
+                headers: { Authorization: `Bearer ${token}` },
+                cache: "no-store",                           // ← NEW
+              }
             );
 
             if (salonRes.ok) {
@@ -190,8 +264,7 @@ export default function SubscriptionPage() {
               setSubscription({
                 id: `salon-${salon.id}`,
                 planId,
-                planName:
-                  currentPlan?.name || planNameFromId(planId),
+                planName: currentPlan?.name || planNameFromId(planId),
                 planCode: currentPlan?.code || "",
                 status: isActive ? "ACTIVE" : "PAST_DUE",
                 currentPeriodStart: subStart || "",
@@ -208,29 +281,27 @@ export default function SubscriptionPage() {
         console.warn("Failed to load salon subscription:", err);
       }
 
-      /* ---------- 3. Usage (best-effort) ---------- */
       try {
-        const usageRes = await fetch("/api/auth/subscription/usage");
+        const usageRes = await fetch("/api/auth/subscription/usage", {
+          cache: "no-store",                                 // ← NEW
+        });
         if (usageRes.ok) {
           const json = await usageRes.json();
           const u = json.data || json;
           if (u) setUsage(u);
         }
-      } catch {
-        // ignore — usage is optional
-      }
+      } catch {}
 
-      /* ---------- 4. Invoices (best-effort) ---------- */
       try {
-        const invoicesRes = await fetch("/api/auth/subscription/invoices");
+        const invoicesRes = await fetch("/api/auth/subscription/invoices", {
+          cache: "no-store",                                 // ← NEW
+        });
         if (invoicesRes.ok) {
           const json = await invoicesRes.json();
           const raw = Array.isArray(json) ? json : json.data || [];
           setInvoices(raw);
         }
-      } catch {
-        // ignore — invoices are optional
-      }
+      } catch {}
     } catch (err) {
       console.error("Error loading subscription:", err);
       setError(
@@ -245,11 +316,11 @@ export default function SubscriptionPage() {
     loadAll();
   }, []);
 
-  /* ---------- Session expiring ---------- */
   useEffect(() => {
     const handler = () => {
       setShowCancelModal(false);
       setShowUpgradeModal(null);
+      setCheckout(null);
       setActionLoading(null);
       setError(null);
     };
@@ -257,9 +328,10 @@ export default function SubscriptionPage() {
     return () => window.removeEventListener("session-expiring", handler);
   }, []);
 
-  /* ---------- Actions ---------- */
-  const handleUpgrade = async (plan: Plan) => {
+  /* ---------- handleUpgrade ---------- */
+  const handleUpgrade = async (plan: Plan, cycle: BillingCycle) => {
     setActionLoading(`upgrade-${plan.id}`);
+    setError(null);
     try {
       const token = localStorage.getItem("adminToken");
       if (!token) throw new Error("Not authenticated");
@@ -270,22 +342,36 @@ export default function SubscriptionPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId: plan.id }),
+        cache: "no-store",                                     // ← NEW
+        body: JSON.stringify({ planId: plan.id, billingCycle: cycle }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         setError(json.message || "Failed to change plan");
         return;
       }
 
-      if (json.redirectUrl) {
-        window.location.href = json.redirectUrl;
+      if (json.requiresPayment) {
+        if (!json.clientSecret) {
+          setError("Checkout could not be started. Please try again.");
+          return;
+        }
+        setShowUpgradeModal(null);
+        setCheckout({
+          plan,
+          cycle,
+          clientSecret: json.clientSecret,
+          sessionId: json.sessionId ?? null,
+        });
         return;
       }
 
+      // Free plan applied immediately
       await loadAll();
       setShowUpgradeModal(null);
+      notifyPlanChanged();                                     // ← NEW
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to change plan");
     } finally {
@@ -293,14 +379,61 @@ export default function SubscriptionPage() {
     }
   };
 
+  /* ---------- Poll after payment completes ---------- */
+  const handleCheckoutComplete = useCallback(async () => {
+    if (!checkout) return;
+    const { sessionId } = checkout;
+
+    if (!sessionId) {
+      await loadAll();
+      setCheckout(null);
+      notifyPlanChanged();                                     // ← NEW
+      return;
+    }
+
+    for (let i = 0; i < 20; i++) {
+      try {
+        const r = await fetch(`/api/auth/stripe/verify/${sessionId}`, {
+          cache: "no-store",                                   // ← NEW
+        });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.status === "SUCCESS") {
+            await loadAll();
+            setCheckout(null);
+            notifyPlanChanged();                               // ← NEW
+            return;
+          }
+        }
+      } catch {}
+      await new Promise((res) => setTimeout(res, 1000));
+    }
+
+    setError(
+      "Payment submitted — your plan is activating. Refresh in a moment."
+    );
+    await loadAll();
+    setCheckout(null);
+    notifyPlanChanged();                                       // ← NEW
+  }, [checkout]);
+
+  /* ---------- Cancel / resume ---------- */
   const handleCancel = async () => {
     setActionLoading("cancel");
+    setError(null);
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch("/api/auth/subscription/cancel", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",                                     // ← NEW
       });
+
+      if (res.status === 404) {
+        setError("Cancellations are not available yet. Please check back soon.");
+        return;
+      }
+
       const json = await res.json();
       if (!res.ok) {
         setError(json.message || "Failed to cancel subscription");
@@ -308,6 +441,7 @@ export default function SubscriptionPage() {
       }
       await loadAll();
       setShowCancelModal(false);
+      notifyPlanChanged();                                     // ← NEW
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel");
     } finally {
@@ -317,18 +451,27 @@ export default function SubscriptionPage() {
 
   const handleResume = async () => {
     setActionLoading("resume");
+    setError(null);
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch("/api/auth/subscription/resume", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",                                     // ← NEW
       });
+
+      if (res.status === 404) {
+        setError("Resuming a plan is not available yet. Please check back soon.");
+        return;
+      }
+
       const json = await res.json();
       if (!res.ok) {
         setError(json.message || "Failed to resume subscription");
         return;
       }
       await loadAll();
+      notifyPlanChanged();                                     // ← NEW
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resume");
     } finally {
@@ -343,7 +486,6 @@ export default function SubscriptionPage() {
   const isExpired = hasSubscription && daysRemaining <= 0;
   const isExpiringSoon = hasSubscription && daysRemaining > 0 && daysRemaining <= 7;
 
-  /* ---------- Loading ---------- */
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -367,7 +509,6 @@ export default function SubscriptionPage() {
         </p>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
           <ExclamationTriangleIcon className="h-5 w-5 text-amber-400 flex-shrink-0" />
@@ -385,7 +526,6 @@ export default function SubscriptionPage() {
       {subscription && hasSubscription && (
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 overflow-hidden mb-6">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
-
           <div className="p-6 md:p-8">
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
               <div className="flex items-start gap-4">
@@ -409,37 +549,35 @@ export default function SubscriptionPage() {
 
               {isExpired ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border bg-red-500/10 border-red-500/20 text-red-400">
-                  <XCircleIcon className="h-3.5 w-3.5" />
-                  Expired
+                  <XCircleIcon className="h-3.5 w-3.5" /> Expired
                 </span>
               ) : isExpiringSoon ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border bg-amber-500/10 border-amber-500/20 text-amber-400">
-                  <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                  Expiring soon
+                  <ExclamationTriangleIcon className="h-3.5 w-3.5" /> Expiring soon
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
-                  <CheckCircleIcon className="h-3.5 w-3.5" />
-                  Active
+                  <CheckCircleIcon className="h-3.5 w-3.5" /> Active
                 </span>
               )}
             </div>
 
-            {/* Plan meta */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-1">
                   Amount
                 </p>
                 <p className="text-xl font-bold text-white">
-                  {formatCurrency(subscription.amount)}
+                  {subscription.amount === 0
+                    ? "Free trial"
+                    : formatCurrency(subscription.amount)}
                 </p>
                 <p className="text-[10px] text-white/40 mt-0.5">
-                  per{" "}
-                  {subscription.billingCycle === "YEARLY" ? "year" : "month"}
+                  {subscription.amount === 0
+                    ? "no card required"
+                    : `per ${subscription.billingCycle === "YEARLY" ? "year" : "month"}`}
                 </p>
               </div>
-
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-1">
                   Started
@@ -448,7 +586,6 @@ export default function SubscriptionPage() {
                   {formatDate(subscription.currentPeriodStart)}
                 </p>
               </div>
-
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-1">
                   Renews on
@@ -457,7 +594,6 @@ export default function SubscriptionPage() {
                   {formatDate(subscription.currentPeriodEnd)}
                 </p>
               </div>
-
               <div className="bg-white/5 rounded-xl p-4">
                 <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-1">
                   Days remaining
@@ -476,7 +612,6 @@ export default function SubscriptionPage() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => {
@@ -491,8 +626,7 @@ export default function SubscriptionPage() {
                 className="relative inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 to-purple-500 hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 group overflow-hidden disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <span className="relative z-10 flex items-center gap-2">
-                  <ArrowUpIcon className="h-4 w-4" />
-                  Change plan
+                  <ArrowUpIcon className="h-4 w-4" /> Change plan
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-purple-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </button>
@@ -551,7 +685,6 @@ export default function SubscriptionPage() {
         </div>
       )}
 
-      {/* No subscription */}
       {!hasSubscription && (
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-3xl border border-white/10 overflow-hidden mb-6">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
@@ -569,18 +702,15 @@ export default function SubscriptionPage() {
         </div>
       )}
 
-      {/* Usage (if available) */}
       {usage && (
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 mb-6 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent" />
-
           <div className="flex items-center gap-2 mb-5">
             <ChartBarIcon className="h-4 w-4 text-purple-400" />
             <h2 className="text-sm font-semibold text-white">
               This month&apos;s usage
             </h2>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <UsageBar
               label="Bookings"
@@ -598,23 +728,31 @@ export default function SubscriptionPage() {
         </div>
       )}
 
-      {/* Plans */}
       {plans.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-sm font-semibold text-white mb-4">
-            Available plans
-          </h2>
-
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-white">Available plans</h2>
+            <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {plans.map((plan) => {
               const isCurrent = plan.id === subscription?.planId;
+              const { selectable, reason } = getPlanSelectability({
+                plan,
+                currentPlan,
+                subscription,
+              });
+
               return (
                 <PlanCard
                   key={plan.id}
                   plan={plan}
+                  billingCycle={billingCycle}
                   isCurrent={isCurrent}
+                  selectable={selectable}
+                  disabledReason={reason}
                   onSelect={() => {
-                    if (isCurrent) return;
+                    if (!selectable) return;
                     setShowUpgradeModal(plan);
                   }}
                 />
@@ -624,16 +762,13 @@ export default function SubscriptionPage() {
         </div>
       )}
 
-      {/* Invoices */}
       {invoices.length > 0 && (
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
-
           <div className="p-5 pb-3 flex items-center gap-2">
             <DocumentTextIcon className="h-4 w-4 text-cyan-400" />
             <h2 className="text-sm font-semibold text-white">Billing history</h2>
           </div>
-
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -650,9 +785,7 @@ export default function SubscriptionPage() {
                   <th className="text-right text-[10px] uppercase tracking-wider text-white/40 font-semibold px-5 py-3">
                     Status
                   </th>
-                  <th className="text-right text-[10px] uppercase tracking-wider text-white/40 font-semibold px-5 py-3">
-
-                  </th>
+                  <th className="text-right text-[10px] uppercase tracking-wider text-white/40 font-semibold px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -665,14 +798,22 @@ export default function SubscriptionPage() {
         </div>
       )}
 
-      {/* Modals */}
-      {showUpgradeModal && (
+      {showUpgradeModal && !checkout && (
         <ChangePlanModal
           plan={showUpgradeModal}
           currentPlan={currentPlan}
+          initialCycle={billingCycle}
           loading={actionLoading === `upgrade-${showUpgradeModal.id}`}
-          onConfirm={() => handleUpgrade(showUpgradeModal)}
+          onConfirm={(cycle) => handleUpgrade(showUpgradeModal, cycle)}
           onClose={() => setShowUpgradeModal(null)}
+        />
+      )}
+
+      {checkout && (
+        <CheckoutModal
+          state={checkout}
+          onComplete={handleCheckoutComplete}
+          onClose={() => setCheckout(null)}
         />
       )}
 
@@ -685,6 +826,43 @@ export default function SubscriptionPage() {
         />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Billing toggle                                                     */
+/* ------------------------------------------------------------------ */
+
+function BillingCycleToggle({
+  value,
+  onChange,
+}: {
+  value: BillingCycle;
+  onChange: (v: BillingCycle) => void;
+}) {
+  return (
+    <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 p-0.5 text-xs">
+      <button
+        onClick={() => onChange("monthly")}
+        className={`px-3 py-1.5 rounded-full font-semibold transition-all ${
+          value === "monthly"
+            ? "bg-gradient-to-r from-cyan-500 to-purple-500 text-white"
+            : "text-white/50 hover:text-white/80"
+        }`}
+      >
+        Monthly
+      </button>
+      <button
+        onClick={() => onChange("yearly")}
+        className={`px-3 py-1.5 rounded-full font-semibold transition-all ${
+          value === "yearly"
+            ? "bg-gradient-to-r from-cyan-500 to-purple-500 text-white"
+            : "text-white/50 hover:text-white/80"
+        }`}
+      >
+        Yearly
+      </button>
+    </div>
   );
 }
 
@@ -706,7 +884,6 @@ function UsageBar({
   const pct = limit > 0 ? Math.min(100, (current / limit) * 100) : 0;
   const isNearLimit = pct >= 80;
   const isAtLimit = pct >= 100;
-
   const barColor = isAtLimit
     ? "from-red-500 to-red-400"
     : isNearLimit
@@ -749,11 +926,17 @@ function UsageBar({
 
 function PlanCard({
   plan,
+  billingCycle,
   isCurrent,
+  selectable,
+  disabledReason,
   onSelect,
 }: {
   plan: Plan;
+  billingCycle: BillingCycle;
   isCurrent: boolean;
+  selectable: boolean;
+  disabledReason?: string;
   onSelect: () => void;
 }) {
   const features = [
@@ -765,22 +948,31 @@ function PlanCard({
     plan.customBranding && "Custom branding",
   ].filter(Boolean) as string[];
 
+  const isFree = plan.monthlyPrice === 0;
+  const isDisabled = !selectable && !isCurrent;
+  const price = planPrice(plan, billingCycle);
+  const yearlySaving =
+    plan.monthlyPrice > 0 && plan.yearlyPrice > 0
+      ? Math.max(0, plan.monthlyPrice * 12 - plan.yearlyPrice)
+      : 0;
+
   return (
     <div
       className={`relative backdrop-blur-2xl bg-white/5 rounded-2xl border overflow-hidden transition-all ${
         isCurrent
           ? "border-cyan-400/40"
+          : isDisabled
+          ? "border-white/5 opacity-60"
           : "border-white/10 hover:border-white/20"
       }`}
     >
-      {plan.popular && !isCurrent && (
+      {plan.popular && !isCurrent && !isDisabled && (
         <div className="absolute top-0 right-0">
           <div className="bg-gradient-to-l from-cyan-500 to-purple-500 text-white text-[9px] font-bold px-2.5 py-1 rounded-bl-xl tracking-wider">
             POPULAR
           </div>
         </div>
       )}
-
       {isCurrent && (
         <div className="absolute top-0 right-0">
           <div className="bg-emerald-500/90 text-white text-[9px] font-bold px-2.5 py-1 rounded-bl-xl tracking-wider">
@@ -788,7 +980,13 @@ function PlanCard({
           </div>
         </div>
       )}
-
+      {isDisabled && (
+        <div className="absolute top-0 right-0">
+          <div className="bg-white/10 text-white/60 text-[9px] font-bold px-2.5 py-1 rounded-bl-xl tracking-wider">
+            UNAVAILABLE
+          </div>
+        </div>
+      )}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent" />
 
       <div className="p-5">
@@ -797,17 +995,53 @@ function PlanCard({
           <p className="text-xs text-white/50 mt-1">{plan.description}</p>
         )}
 
-        <div className="mt-4 flex items-baseline gap-1">
-          <span className="text-3xl font-bold text-white">
-            {formatCurrency(plan.monthlyPrice)}
-          </span>
-          <span className="text-sm text-white/40">/month</span>
+        <div className="mt-4">
+          {isFree ? (
+            <>
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold text-emerald-400">Free</span>
+                {plan.trialDays > 0 && (
+                  <span className="text-sm text-white/40">
+                    for {Math.round(plan.trialDays / 30)}{" "}
+                    {Math.round(plan.trialDays / 30) === 1 ? "month" : "months"}
+                  </span>
+                )}
+              </div>
+              {plan.trialDays > 0 && (
+                <p
+                  className={`text-[11px] mt-1 ${
+                    isDisabled ? "text-amber-400/80" : "text-white/40"
+                  }`}
+                >
+                  {isDisabled && disabledReason
+                    ? disabledReason
+                    : "Then upgrade to a paid plan anytime"}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold text-white">
+                  {formatCurrency(price)}
+                </span>
+                <span className="text-sm text-white/40">
+                  /{billingCycle === "yearly" ? "year" : "month"}
+                </span>
+              </div>
+              {billingCycle === "monthly" && plan.yearlyPrice > 0 && (
+                <p className="text-[11px] text-white/40 mt-1">
+                  or {formatCurrency(plan.yearlyPrice)} / year
+                </p>
+              )}
+              {billingCycle === "yearly" && yearlySaving > 0 && (
+                <p className="text-[11px] text-emerald-400 mt-1">
+                  Save {formatCurrency(yearlySaving)} vs monthly
+                </p>
+              )}
+            </>
+          )}
         </div>
-        {plan.yearlyPrice > 0 && (
-          <p className="text-[11px] text-white/40 mt-1">
-            or {formatCurrency(plan.yearlyPrice)} / year
-          </p>
-        )}
 
         <ul className="mt-4 space-y-2">
           {features.map((f, i) => (
@@ -820,18 +1054,22 @@ function PlanCard({
 
         <button
           onClick={onSelect}
-          disabled={isCurrent}
+          disabled={!selectable}
           className={`mt-5 w-full rounded-xl py-2.5 text-sm font-semibold transition-all ${
             isCurrent
               ? "bg-white/5 border border-white/10 text-white/40 cursor-default"
+              : isDisabled
+              ? "bg-white/5 border border-white/10 text-white/40 cursor-not-allowed"
               : "relative bg-gradient-to-r from-cyan-500 to-purple-500 text-white hover:shadow-lg hover:shadow-purple-500/30 overflow-hidden group"
           }`}
         >
           {isCurrent ? (
             "Current plan"
+          ) : isDisabled ? (
+            "Unavailable"
           ) : (
             <>
-              <span className="relative z-10">Choose this plan</span>
+              <span className="relative z-10">Select plan</span>
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-purple-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             </>
           )}
@@ -847,9 +1085,21 @@ function PlanCard({
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   const statusMap: Record<string, { label: string; color: string; bg: string }> = {
-    PAID:    { label: "Paid",    color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-    PENDING: { label: "Pending", color: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/20" },
-    FAILED:  { label: "Failed",  color: "text-red-400",     bg: "bg-red-500/10 border-red-500/20" },
+    PAID: {
+      label: "Paid",
+      color: "text-emerald-400",
+      bg: "bg-emerald-500/10 border-emerald-500/20",
+    },
+    PENDING: {
+      label: "Pending",
+      color: "text-amber-400",
+      bg: "bg-amber-500/10 border-amber-500/20",
+    },
+    FAILED: {
+      label: "Failed",
+      color: "text-red-400",
+      bg: "bg-red-500/10 border-red-500/20",
+    },
   };
   const meta = statusMap[invoice.status] || statusMap.PENDING;
 
@@ -888,31 +1138,161 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Checkout modal                                                     */
+/* ------------------------------------------------------------------ */
+
+function CheckoutModal({
+  state,
+  onComplete,
+  onClose,
+}: {
+  state: CheckoutState;
+  onComplete: () => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [paid, setPaid] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (paid) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [paid, onClose]);
+
+  if (!mounted) return null;
+
+  const price = planPrice(state.plan, state.cycle);
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 md:pl-72 bg-black/80 backdrop-blur-md overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkout-title"
+    >
+      <div className="relative backdrop-blur-2xl bg-slate-900/95 rounded-t-3xl sm:rounded-3xl border border-white/10 w-full max-w-xl my-0 sm:my-8 shadow-2xl shadow-black/50">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-t-3xl" />
+
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-white/[0.06]">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold mb-1">
+              Secure checkout
+            </p>
+            <h2
+              id="checkout-title"
+              className="text-base font-semibold text-white"
+            >
+              {state.plan.name} — {formatCurrency(price)}
+              <span className="text-sm font-normal text-white/50">
+                /{state.cycle === "yearly" ? "year" : "month"}
+              </span>
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={paid}
+            className="p-2 rounded-lg hover:bg-white/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Close checkout"
+          >
+            <XMarkIcon className="h-5 w-5 text-white/60" />
+          </button>
+        </div>
+
+        <div className="relative p-4 sm:p-5">
+          <EmbeddedCheckoutProvider
+            key={state.clientSecret}
+            stripe={stripePromise}
+            options={{
+              clientSecret: state.clientSecret,
+              onComplete: async () => {
+                setPaid(true);
+                await onComplete();
+              },
+            }}
+          >
+            <EmbeddedCheckout />
+          </EmbeddedCheckoutProvider>
+
+          {paid && (
+            <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center gap-3 rounded-b-3xl">
+              <ArrowPathIcon className="h-8 w-8 text-cyan-400 animate-spin" />
+              <p className="text-sm text-white/70">Activating your plan…</p>
+              <p className="text-xs text-white/40">
+                This usually takes a few seconds.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 px-6 py-3 border-t border-white/[0.06]">
+          <LockClosedIcon className="h-4 w-4 text-white/40 flex-shrink-0" />
+          <p className="text-xs text-white/50">
+            Payments are processed securely by Stripe. You can cancel anytime
+            from this page.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Change plan modal                                                  */
 /* ------------------------------------------------------------------ */
 
 function ChangePlanModal({
   plan,
   currentPlan,
+  initialCycle,
   loading,
   onConfirm,
   onClose,
 }: {
   plan: Plan;
   currentPlan?: Plan;
+  initialCycle: BillingCycle;
   loading: boolean;
-  onConfirm: () => void;
+  onConfirm: (cycle: BillingCycle) => void;
   onClose: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [cycle, setCycle] = useState<BillingCycle>(
+    plan.monthlyPrice === 0 ? "monthly" : initialCycle
+  );
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!mounted) return null;
 
-  const isUpgrade = (currentPlan?.monthlyPrice ?? 0) < plan.monthlyPrice;
-  const priceDiff = plan.monthlyPrice - (currentPlan?.monthlyPrice ?? 0);
+  const isFree = plan.monthlyPrice === 0;
+  const price = planPrice(plan, cycle);
+  const currentPrice = currentPlan
+    ? cycle === "yearly"
+      ? currentPlan.yearlyPrice
+      : currentPlan.monthlyPrice
+    : 0;
+  const isUpgrade = !isFree && price > currentPrice;
+  const priceDiff = isFree ? 0 : price - currentPrice;
+  const yearlySaving =
+    plan.monthlyPrice > 0 && plan.yearlyPrice > 0
+      ? Math.max(0, plan.monthlyPrice * 12 - plan.yearlyPrice)
+      : 0;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 md:pl-72 bg-black/70 backdrop-blur-md overflow-y-auto">
@@ -921,7 +1301,7 @@ function ChangePlanModal({
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
           <h2 className="text-base font-semibold text-white">
-            {isUpgrade ? "Upgrade plan" : "Change plan"}
+            {isFree ? "Start free trial" : isUpgrade ? "Upgrade plan" : "Change plan"}
           </h2>
           <button
             onClick={onClose}
@@ -935,34 +1315,68 @@ function ChangePlanModal({
         <div className="p-6 space-y-4">
           <div className="bg-white/5 rounded-xl p-4">
             <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-1">
-              New plan
+              Selected plan
             </p>
             <p className="text-lg font-bold text-white">{plan.name}</p>
             {plan.description && (
               <p className="text-xs text-white/50 mt-1">{plan.description}</p>
             )}
 
-            <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-white">
-                {formatCurrency(plan.monthlyPrice)}
-              </span>
-              <span className="text-sm text-white/40">/month</span>
-            </div>
+            {isFree ? (
+              <div className="mt-3 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-emerald-400">Free</span>
+                {plan.trialDays > 0 && (
+                  <span className="text-sm text-white/40">
+                    for {Math.round(plan.trialDays / 30)}{" "}
+                    {Math.round(plan.trialDays / 30) === 1 ? "month" : "months"}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-white">
+                  {formatCurrency(price)}
+                </span>
+                <span className="text-sm text-white/40">
+                  /{cycle === "yearly" ? "year" : "month"}
+                </span>
+              </div>
+            )}
           </div>
 
-          {currentPlan && (
+          {!isFree && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-2">
+                Billing cycle
+              </p>
+              <BillingCycleToggle value={cycle} onChange={setCycle} />
+              {cycle === "yearly" && yearlySaving > 0 && (
+                <p className="text-[11px] text-emerald-400 mt-2">
+                  Save {formatCurrency(yearlySaving)} per year vs monthly.
+                </p>
+              )}
+            </div>
+          )}
+
+          {currentPlan && !isFree && (
             <div className="flex items-center justify-between text-sm px-1">
               <span className="text-white/50">Current plan</span>
               <span className="text-white/80 font-medium">
-                {currentPlan.name} — {formatCurrency(currentPlan.monthlyPrice)}/mo
+                {currentPlan.name} —{" "}
+                {formatCurrency(
+                  cycle === "yearly"
+                    ? currentPlan.yearlyPrice
+                    : currentPlan.monthlyPrice
+                )}
+                /{cycle === "yearly" ? "yr" : "mo"}
               </span>
             </div>
           )}
 
-          {priceDiff !== 0 && (
+          {priceDiff !== 0 && !isFree && (
             <div className="flex items-center justify-between text-sm px-1">
               <span className="text-white/50">
-                {isUpgrade ? "Additional charge" : "Credit"}
+                {isUpgrade ? "Price increase" : "Price decrease"}
               </span>
               <span
                 className={`font-semibold ${
@@ -971,38 +1385,30 @@ function ChangePlanModal({
               >
                 {isUpgrade ? "+" : "−"}
                 {formatCurrency(Math.abs(priceDiff))}
-                <span className="text-white/40 font-normal">/mo</span>
+                <span className="text-white/40 font-normal">
+                  /{cycle === "yearly" ? "yr" : "mo"}
+                </span>
               </span>
             </div>
           )}
 
-          {isUpgrade && (
-            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-start gap-2">
-              <SparklesIcon className="h-4 w-4 text-cyan-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-cyan-300/90">
-                You&apos;ll be charged a prorated amount today. Your new plan
-                features activate immediately.
-              </p>
-            </div>
-          )}
-
-          {!isUpgrade && priceDiff < 0 && (
+          {isFree && (
             <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2">
               <CheckCircleIcon className="h-4 w-4 text-emerald-400 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-emerald-300/90">
-                A credit will be applied to your account. Your new plan takes
-                effect at the next billing cycle.
+                Your free trial will activate immediately. No card required.
               </p>
             </div>
           )}
 
-          <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-start gap-2">
-            <LockClosedIcon className="h-4 w-4 text-white/40 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-white/50">
-              Secure payment processed via Stripe. You can cancel anytime from
-              this page.
-            </p>
-          </div>
+          {!isFree && (
+            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-start gap-2">
+              <LockClosedIcon className="h-4 w-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-cyan-300/90">
+                Next you&apos;ll see Stripe&apos;s secure payment form.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 px-6 py-4 border-t border-white/[0.06]">
@@ -1014,7 +1420,7 @@ function ChangePlanModal({
             Cancel
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => onConfirm(cycle)}
             disabled={loading}
             className="flex-1 relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 to-purple-500 hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 group overflow-hidden disabled:opacity-60 disabled:cursor-not-allowed"
           >
@@ -1022,12 +1428,12 @@ function ChangePlanModal({
               {loading ? (
                 <>
                   <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                  Processing…
+                  Preparing…
                 </>
               ) : (
                 <>
                   <SparklesIcon className="h-4 w-4" />
-                  {isUpgrade ? "Upgrade now" : "Confirm change"}
+                  {isFree ? "Start trial" : "Continue to payment"}
                 </>
               )}
             </span>

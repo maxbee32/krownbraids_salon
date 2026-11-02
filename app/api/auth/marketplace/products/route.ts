@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://58bb-82-36-98-104.ngrok-free.app/supservice/api/v1/auth/marketplace/products";
+  "https://7257-82-36-98-104.ngrok-free.app/supservice/api/v1/auth/marketplace/products";
 
 export async function GET(request: NextRequest) {
   try {
