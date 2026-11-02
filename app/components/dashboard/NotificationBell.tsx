@@ -36,6 +36,7 @@ type BackendNotificationType =
 interface ApiNotification {
   id: number;
   eventId: string;
+  type: string;
   subject: string;
   message: string;
   read: boolean;
