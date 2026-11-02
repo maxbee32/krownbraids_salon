@@ -1103,7 +1103,9 @@ function PostcodeAddressFields({
     setAddresses([]);
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_IDEAL_POSTCODES_API_KEY;
+      const apiKey =
+  process.env.NEXT_PUBLIC_IDEAL_POSTCODES_API_KEY ||
+  "ak_ZqHfoW4m65DOrrGcg0HV84YFJOBfa";
       const res = await fetch(
         `https://api.ideal-postcodes.co.uk/v1/postcodes/${encodeURIComponent(
           cleaned
