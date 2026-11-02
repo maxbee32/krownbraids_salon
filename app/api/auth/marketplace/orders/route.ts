@@ -1,7 +1,7 @@
 // app/api/auth/marketplace/orders/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const PAYMENT_BACKEND = "https://7257-82-36-98-104.ngrok-free.app/pservice";
+const PAYMENT_BACKEND = "https://4ef0-82-36-98-104.ngrok-free.app/pservice";
 
 export async function GET(request: NextRequest) {
   try {
