@@ -33,6 +33,7 @@ interface SalonData {
   rejectionReason?: string;
   rejectedAt?: string;
 }
+type TrendDirection = "up" | "down" | "flat";
 
 const STAT_DEFS = [
   {
@@ -44,7 +45,7 @@ const STAT_DEFS = [
     text: "text-blue-400",
     href: "/dashboard/bookings",
     defaultValue: "0",
-    trend: { value: "+12%", direction: "up" as const },
+    trend: { value: "+12%", direction: "up" as TrendDirection },
   },
   {
     label: "Active clients",
@@ -55,7 +56,7 @@ const STAT_DEFS = [
     text: "text-emerald-400",
     href: "/dashboard/clients",
     defaultValue: "0",
-    trend: { value: "+8%", direction: "up" as const },
+    trend: { value: "+8%", direction: "up" as TrendDirection },
   },
   {
     label: "Revenue this month",
@@ -66,7 +67,7 @@ const STAT_DEFS = [
     text: "text-purple-400",
     href: "/dashboard/revenue",
     defaultValue: "£0",
-    trend: { value: "+23%", direction: "up" as const },
+    trend: { value: "+23%", direction: "up" as TrendDirection },
   },
   {
     label: "Services",
@@ -77,7 +78,7 @@ const STAT_DEFS = [
     text: "text-cyan-400",
     href: "/dashboard/services",
     defaultValue: "0",
-    trend: { value: "Stable", direction: "flat" as const },
+    trend: { value: "Stable", direction: "flat" as TrendDirection },
   },
 ] as const;
 
