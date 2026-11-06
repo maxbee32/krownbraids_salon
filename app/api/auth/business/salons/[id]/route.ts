@@ -57,7 +57,7 @@ export async function GET(
     // ==========================================
 
     const backendUrl =
-      `https://9277-82-36-98-104.ngrok-free.app/bservice/api/v1/auth/business/salons/${id}`;
+      `https://9125-82-36-98-104.ngrok-free.app/bservice/api/v1/auth/business/salons/${id}`;
 
     console.log(
       "Calling business service:",
@@ -198,7 +198,7 @@ export async function PUT(
 
     // Business Service URL
     const backendUrl =
-      `https://9277-82-36-98-104.ngrok-free.app/bservice/api/v1/auth/business/salons/${id}`;
+      `https://9125-82-36-98-104.ngrok-free.app/bservice/api/v1/auth/business/salons/${id}`;
 
     console.log("Calling business service (PUT):", backendUrl);
 

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://9277-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
+  "https://9125-82-36-98-104.ngrok-free.app/servicesservice/api/v1/auth/services";
 
 // =====================================================
 // GET ALL SERVICES FOR A SALON
