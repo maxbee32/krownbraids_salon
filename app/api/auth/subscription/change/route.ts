@@ -1,9 +1,9 @@
 // app/api/auth/subscription/change/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const AUTH_BACKEND = "https://9125-82-36-98-104.ngrok-free.app/aservice";
-const BUSINESS_BACKEND = "https://9125-82-36-98-104.ngrok-free.app/bservice";
-const PAYMENT_BACKEND = "https://9125-82-36-98-104.ngrok-free.app/pservice";
+const AUTH_BACKEND = "https://2c9e-82-36-98-104.ngrok-free.app/aservice";
+const BUSINESS_BACKEND = "https://2c9e-82-36-98-104.ngrok-free.app/bservice";
+const PAYMENT_BACKEND = "https://2c9e-82-36-98-104.ngrok-free.app/pservice";
 
 const NGrok_HEADERS = { "ngrok-skip-browser-warning": "true" } as const;
 

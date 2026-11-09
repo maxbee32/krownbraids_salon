@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     // ==========================================
 
     const backendUrl =
-      "https://9125-82-36-98-104.ngrok-free.app/sservice/api/v1/auth/salon-owner/register";
+      "https://2c9e-82-36-98-104.ngrok-free.app/sservice/api/v1/auth/salon-owner/register";
 
     console.log("Calling backend:", backendUrl);
 

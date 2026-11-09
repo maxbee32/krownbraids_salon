@@ -82,7 +82,24 @@ export default function ClientsPage() {
       setError(null);
 
       try {
-        const res = await fetch("/api/auth/clients");
+        const token = localStorage.getItem('adminToken');
+        if (!token) {
+          setLoading(false);
+          setError('You are not signed in.');
+          return;
+        }
+
+        const res = await fetch('/api/auth/clients', {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          setLoading(false);
+          setError('Your session expired. Please sign in again.');
+          return;
+        }
+
         if (!res.ok) {
           throw new Error(`Failed to load clients (${res.status})`);
         }
@@ -91,15 +108,15 @@ export default function ClientsPage() {
         const raw = Array.isArray(json) ? json : json.data || [];
 
         const mapped: Client[] = raw.map((c: any) => ({
-          id: c.id,
-          name: c.name || `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Unnamed",
-          email: c.email || "",
-          phone: c.phone || c.phoneNumber || "",
+          id: String(c.id ?? c.email ?? ''),
+          name: c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || 'Unnamed',
+          email: c.email || '',
+          phone: c.phone || c.phoneNumber || '',
           totalBookings: c.totalBookings ?? 0,
           totalSpent: Number(c.totalSpent) || 0,
           lastVisit: c.lastVisit || null,
-          createdAt: c.createdAt || "",
-          notes: c.notes || "",
+          createdAt: c.createdAt || '',
+          notes: c.notes || '',
         }));
 
         setClients(mapped);
@@ -115,10 +132,6 @@ export default function ClientsPage() {
     loadClients();
   }, []);
 
-  /**
-   * When the session is about to expire, close any open modal or transient
-   * UI so the session expiry warning gets the user's full attention.
-   */
   useEffect(() => {
     const handler = () => {
       setSelectedClient(null);
@@ -185,7 +198,6 @@ export default function ClientsPage() {
 
   return (
     <>
-      {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
           Clients
@@ -195,7 +207,6 @@ export default function ClientsPage() {
         </p>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
           <ExclamationTriangleIcon className="h-5 w-5 text-amber-400 flex-shrink-0" />
@@ -209,7 +220,6 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
         <StatCard
           label="Total clients"
@@ -237,7 +247,6 @@ export default function ClientsPage() {
         />
       </div>
 
-      {/* Search + sort */}
       <div className="flex items-center gap-2 mb-4">
         <div className="flex-1 relative">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
@@ -266,12 +275,10 @@ export default function ClientsPage() {
         </select>
       </div>
 
-      {/* Results count */}
       <p className="text-white/40 text-xs mb-3">
         {filtered.length} client{filtered.length !== 1 ? "s" : ""}
       </p>
 
-      {/* Client list */}
       {loading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -309,12 +316,10 @@ export default function ClientsPage() {
               <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
               <div className="flex items-center gap-4">
-                {/* Avatar */}
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/25 to-purple-500/25 border border-white/10 flex items-center justify-center text-white font-semibold flex-shrink-0">
                   {initials(client.name) || "?"}
                 </div>
 
-                {/* Name + contact */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">
                     {client.name}
@@ -337,7 +342,6 @@ export default function ClientsPage() {
                   </div>
                 </div>
 
-                {/* Metrics */}
                 <div className="hidden md:flex items-center gap-6 flex-shrink-0">
                   <div className="text-right">
                     <p className="text-[10px] uppercase tracking-wider text-white/40">
@@ -370,7 +374,6 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Client detail modal */}
       {selectedClient && (
         <ClientModal
           client={selectedClient}
@@ -449,7 +452,6 @@ function ClientModal({
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Identity */}
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500/25 to-purple-500/25 border border-white/10 flex items-center justify-center text-white text-lg font-semibold">
               {initials(client.name) || "?"}
@@ -464,7 +466,6 @@ function ClientModal({
             </div>
           </div>
 
-          {/* Contact */}
           <div className="bg-white/5 rounded-xl p-4 space-y-2">
             {client.email && (
               <div className="flex items-center gap-2.5 text-sm">
@@ -480,7 +481,6 @@ function ClientModal({
             )}
           </div>
 
-          {/* Metrics */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white/5 rounded-xl p-3 text-center">
               <CalendarIcon className="h-4 w-4 text-cyan-400 mx-auto mb-1.5" />
@@ -511,7 +511,6 @@ function ClientModal({
             </div>
           </div>
 
-          {/* Notes */}
           {client.notes && (
             <div className="bg-white/5 rounded-xl p-4">
               <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-2">

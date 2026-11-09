@@ -9,6 +9,7 @@ import {
   ChartBarIcon,
   XMarkIcon,
   ExclamationTriangleIcon,
+  ReceiptPercentIcon,
 } from "@heroicons/react/24/outline";
 import {
   AreaChart,
@@ -31,7 +32,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 interface RevenuePoint {
-  date: string;      // YYYY-MM-DD
+  date: string;
   revenue: number;
   bookings: number;
 }
@@ -43,10 +44,12 @@ interface ServiceRevenue {
 }
 
 interface RevenueSummary {
-  totalRevenue: number;
+  totalRevenue: number;      // net (after commission) — what the salon keeps
+  totalGross: number;        // what customers paid
+  totalCommission: number;   // platform's 8%
   totalBookings: number;
-  avgOrderValue: number;
-  change: number;     // % change vs previous period
+  avgOrderValue: number;     // net average
+  change: number;
 }
 
 interface RevenueResponse {
@@ -105,22 +108,39 @@ export default function RevenuePage() {
       setError(null);
 
       try {
-        const res = await fetch(`/api/auth/revenue?range=${range}`);
+        const token = localStorage.getItem("adminToken");
+        if (!token) {
+          setError("You are not signed in.");
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(`/api/auth/revenue?range=${range}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          setError("Your session expired. Please sign in again.");
+          setLoading(false);
+          return;
+        }
+
         if (!res.ok) {
           throw new Error(`Failed to load revenue (${res.status})`);
         }
 
         const json = await res.json();
         const payload = json.data || json;
+        const s = payload.summary || {};
 
-        const summary: RevenueSummary = payload.summary || {
-          totalRevenue: payload.totalRevenue ?? 0,
-          totalBookings: payload.totalBookings ?? 0,
-          avgOrderValue:
-            payload.totalBookings > 0
-              ? (payload.totalRevenue ?? 0) / payload.totalBookings
-              : 0,
-          change: payload.change ?? 0,
+        const summary: RevenueSummary = {
+          totalRevenue: Number(s.totalRevenue ?? payload.totalRevenue ?? 0),
+          totalGross: Number(s.totalGross ?? payload.totalGross ?? 0),
+          totalCommission: Number(s.totalCommission ?? payload.totalCommission ?? 0),
+          totalBookings: Number(s.totalBookings ?? payload.totalBookings ?? 0),
+          avgOrderValue: Number(s.avgOrderValue ?? payload.avgOrderValue ?? 0),
+          change: Number(s.change ?? payload.change ?? 0),
         };
 
         setData({
@@ -130,10 +150,10 @@ export default function RevenuePage() {
             revenue: Number(d.revenue) || 0,
             bookings: Number(d.bookings) || 0,
           })),
-          topServices: (payload.topServices || []).map((s: any) => ({
-            name: s.name || s.serviceName || "Unknown",
-            revenue: Number(s.revenue) || 0,
-            bookings: Number(s.bookings) || 0,
+          topServices: (payload.topServices || []).map((x: any) => ({
+            name: x.name || x.serviceName || "Unknown",
+            revenue: Number(x.revenue) || 0,
+            bookings: Number(x.bookings) || 0,
           })),
         });
       } catch (err) {
@@ -148,14 +168,8 @@ export default function RevenuePage() {
     load();
   }, [range]);
 
-  /**
-   * When the session is about to expire, clear any transient UI so the
-   * session expiry warning gets the user's full attention.
-   */
   useEffect(() => {
-    const handler = () => {
-      setError(null);
-    };
+    const handler = () => setError(null);
     window.addEventListener("session-expiring", handler);
     return () => window.removeEventListener("session-expiring", handler);
   }, []);
@@ -170,7 +184,9 @@ export default function RevenuePage() {
   }, [data, range]);
 
   const totalBookings = data?.summary.totalBookings ?? 0;
-  const totalRevenue = data?.summary.totalRevenue ?? 0;
+  const netRevenue = data?.summary.totalRevenue ?? 0;
+  const grossRevenue = data?.summary.totalGross ?? 0;
+  const totalCommission = data?.summary.totalCommission ?? 0;
   const avgOrder = data?.summary.avgOrderValue ?? 0;
   const change = data?.summary.change ?? 0;
 
@@ -220,34 +236,52 @@ export default function RevenuePage() {
         </div>
       )}
 
-      {/* Summary cards */}
+      {/* Summary cards — net revenue leads, with commission + gross shown so numbers reconcile */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
         <SummaryCard
-          label="Total revenue"
-          value={formatCurrency(totalRevenue)}
+          label="Net revenue"
+          value={formatCurrency(netRevenue)}
           icon={CurrencyPoundIcon}
           color="text-cyan-400"
           trend={change}
         />
         <SummaryCard
-          label="Bookings"
-          value={totalBookings.toString()}
+          label="Gross revenue"
+          value={formatCurrency(grossRevenue)}
           icon={CalendarIcon}
           color="text-emerald-400"
         />
         <SummaryCard
-          label="Avg order value"
-          value={formatCurrency(avgOrder)}
+          label="Commission (8%)"
+          value={formatCurrency(totalCommission)}
+          icon={ReceiptPercentIcon}
+          color="text-amber-400"
+        />
+        <SummaryCard
+          label="Bookings"
+          value={totalBookings.toString()}
           icon={ChartBarIcon}
           color="text-purple-400"
         />
-        <SummaryCard
-          label="Change vs prev."
-          value={`${change > 0 ? "+" : ""}${change.toFixed(1)}%`}
-          icon={change >= 0 ? ArrowTrendingUpIcon : ArrowTrendingDownIcon}
-          color={change >= 0 ? "text-emerald-400" : "text-red-400"}
-        />
       </div>
+
+      {/* Sub-note so the salon understands net vs gross */}
+      {grossRevenue > 0 && (
+        <div className="mb-6 -mt-2 px-1">
+          <p className="text-[11px] text-white/40">
+            Net revenue is what you keep after the 8% platform commission.
+            {totalCommission > 0 && (
+              <>
+                {" "}Average per booking:{" "}
+                <span className="text-white/60 font-medium">
+                  {formatCurrencyFull(avgOrder)}
+                </span>
+                .
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Revenue over time */}
       <div className="relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 mb-6 overflow-hidden">
@@ -314,13 +348,10 @@ export default function RevenuePage() {
 
       {/* Two column: Bookings chart + Top services pie */}
       <div className="grid lg:grid-cols-2 gap-4 mb-6">
-        {/* Bookings per period */}
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent" />
 
-          <h2 className="text-sm font-semibold text-white mb-5">
-            Bookings
-          </h2>
+          <h2 className="text-sm font-semibold text-white mb-5">Bookings</h2>
 
           {loading ? (
             <div className="h-[240px] rounded-xl bg-white/5 animate-pulse" />
@@ -366,12 +397,11 @@ export default function RevenuePage() {
           )}
         </div>
 
-        {/* Top services pie */}
         <div className="relative backdrop-blur-2xl bg-white/5 rounded-2xl border border-white/10 p-5 overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-pink-400/40 to-transparent" />
 
           <h2 className="text-sm font-semibold text-white mb-5">
-            Top services by revenue
+            Top services by net revenue
           </h2>
 
           {loading ? (
@@ -438,7 +468,7 @@ export default function RevenuePage() {
                     Bookings
                   </th>
                   <th className="text-right text-[10px] uppercase tracking-wider text-white/40 font-semibold px-5 py-3">
-                    Revenue
+                    Net revenue
                   </th>
                   <th className="text-right text-[10px] uppercase tracking-wider text-white/40 font-semibold px-5 py-3">
                     Share
@@ -448,7 +478,7 @@ export default function RevenuePage() {
               <tbody>
                 {data.topServices.map((service, i) => {
                   const share =
-                    totalRevenue > 0 ? (service.revenue / totalRevenue) * 100 : 0;
+                    netRevenue > 0 ? (service.revenue / netRevenue) * 100 : 0;
                   return (
                     <tr
                       key={i}
@@ -458,9 +488,7 @@ export default function RevenuePage() {
                         <div className="flex items-center gap-2.5">
                           <div
                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                            style={{
-                              backgroundColor: COLORS[i % COLORS.length],
-                            }}
+                            style={{ backgroundColor: COLORS[i % COLORS.length] }}
                           />
                           <span className="text-sm text-white truncate">
                             {service.name}
