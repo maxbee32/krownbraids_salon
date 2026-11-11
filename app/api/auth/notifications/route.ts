@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://2c9e-82-36-98-104.ngrok-free.app/nservice/api/v1/auth/notifications";
+  "https://60a6-82-36-98-104.ngrok-free.app/nservice/api/v1/auth/notifications";
 
 export async function GET(request: Request) {
   try {

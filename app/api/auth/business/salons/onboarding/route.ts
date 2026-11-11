@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /*  CONFIGURATION                                        */
 /* ===================================================== */
 
-const BACKEND_BASE = "https://2c9e-82-36-98-104.ngrok-free.app";
+const BACKEND_BASE = "https://60a6-82-36-98-104.ngrok-free.app";
 const BACKEND_URL = `${BACKEND_BASE}/bservice/api/v1/auth/business/salons`;
 
 /* ===================================================== */

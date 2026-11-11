@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
   process.env.BUSINESS_SERVICE_URL ||
-  "https://2c9e-82-36-98-104.ngrok-free.app/bservice";
+  "https://60a6-82-36-98-104.ngrok-free.app/bservice";
 
 export async function GET(
   request: NextRequest,

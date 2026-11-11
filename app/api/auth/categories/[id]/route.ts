@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL =
-  "https://2c9e-82-36-98-104.ngrok-free.app/servicesservice/api/v1/services";
+  "https://60a6-82-36-98-104.ngrok-free.app/servicesservice/api/v1/services";
 
 // =====================================================
 // GET CATEGORY BY ID

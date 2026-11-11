@@ -1,7 +1,7 @@
 // app/api/auth/stripe/verify/[sessionId]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const PAYMENT_BACKEND = "https://2c9e-82-36-98-104.ngrok-free.app/pservice";
+const PAYMENT_BACKEND = "https://60a6-82-36-98-104.ngrok-free.app/pservice";
 
 export async function GET(
   _req: NextRequest,

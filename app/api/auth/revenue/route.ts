@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BUSINESS_URL =
   process.env.BUSINESS_SERVICE_URL ||
-  'https://2c9e-82-36-98-104.ngrok-free.app/bservice';
+  'https://60a6-82-36-98-104.ngrok-free.app/bservice';
 
 const PAYMENT_URL =
   process.env.PAYMENT_SERVICE_URL ||
-  'https://2c9e-82-36-98-104.ngrok-free.app/pservice';
+  'https://60a6-82-36-98-104.ngrok-free.app/pservice';
 
 const INTERNAL_TOKEN =
   process.env.INTERNAL_SERVICE_TOKEN ?? 'change-me-super-secret-token';
